@@ -3,7 +3,7 @@
 # default location: ~/.config/sro/sro.toml
 # override:        sro --config /path/to/sro.toml
 
-master_dir = "~/work" # create if dont exist
+master_dir = "~/work" # create if dont exist, handle relative and absolute path
 
 ## projects
 # `sro sync` will clone these repos in relative path to master_dir
@@ -12,14 +12,19 @@ master_dir = "~/work" # create if dont exist
 [projects.todo]
 url = "git@github.com:yourname/todo.git"
 dir = "todo" # will git clone at ~/work/todo
+sync = "clone"    # ← default behavior, implicit
+# sync = "ignore"   ← skip clone, leave alone if exists
+# sync = "disable"  ← skip clone, DELETE if exists
 
 [projects.calendar-ts]
 url = "git@github.com:yourname/calendar-ts.git"
 dir = "calendar-ts"
+sync = "clone"
 
 [projects.sro]
 url = "git@github.com:yourname/sro.git"
 dir = "tools/sro" # will git clone at ~/work/tools/sro
+sync = "disable"
 
 ## exec aliases
 # each key maps to a list of project.block
@@ -46,3 +51,10 @@ run = [
     "todo.build",
     "sro.build",
 ]
+
+## profiles
+# `sro <insert action> --profile/-p oss` limits action scope to projects defined
+# if `sro sync` or `sro exec <action>` has projects outside profile, it will be ignored
+
+[profile.oss]
+projects = ["todo", "calendar-ts"]

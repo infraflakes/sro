@@ -2,7 +2,7 @@
 # sro will scan for .sro/main.sro in project, nothing is there or syntax is invalid, hard fail
 # required only if project participates in `sro exec`
 # cwd is auto-resolved to master_dir + project.dir
-# primitives: exec, cd, env
+# primitives: exec, cd, env, log
 # scope: all primitives are block-scoped, no leakage
 
 import { # import other sro files for execution blocks
@@ -11,6 +11,7 @@ import { # import other sro files for execution blocks
 }
 
 init {
+    log("Installing dependencies!")
     env("GOFLAGS", "-mod=mod")
     exec("go mod download")
     exec("go generate ./...")
