@@ -1,0 +1,6 @@
+build {
+    env("CGO_ENABLED", "0")
+    env("GOOS", "linux")
+    cd("cmd/todo")
+    exec("go build -o ../../bin/todo .")
+}

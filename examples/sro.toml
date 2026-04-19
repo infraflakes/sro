@@ -1,0 +1,48 @@
+## sro.toml — serein orchestrator config
+# Every syntax error fails at parse time instead of runtime
+# default location: ~/.config/sro/sro.toml
+# override:        sro --config /path/to/sro.toml
+
+master_dir = "~/work" # create if dont exist
+
+## projects
+# `sro sync` will clone these repos in relative path to master_dir
+# missing url dir or both will result in error
+# Having git repo inside master_dir that doesnt belong to the list below shows warning in `sro sync` whether user wants to remove it
+[projects.todo]
+url = "git@github.com:yourname/todo.git"
+dir = "todo" # will git clone at ~/work/todo
+
+[projects.calendar-ts]
+url = "git@github.com:yourname/calendar-ts.git"
+dir = "calendar-ts"
+
+[projects.sro]
+url = "git@github.com:yourname/sro.git"
+dir = "tools/sro" # will git clone at ~/work/tools/sro
+
+## exec aliases
+# each key maps to a list of project.block
+# run order is top-down, fail-fast
+# functions for `sro exec`
+# Hard fail at any step
+
+[exec.check] # make `sro exec check` available
+run = [ # exec chronologically
+    "todo.check", # execute check{} from project todo
+    "calendar-ts.doctor", # execute doctor{} from project calendar-ts
+    "sro.verify", # execute verify{} from project sro
+]
+
+[exec.init] # make `sro exec init` available
+run = [
+    "todo.init",
+    "calendar-ts.init",
+    "sro.init",
+]
+
+[exec.build] # make `sro exec build` available
+run = [
+    "todo.build",
+    "sro.build",
+]
