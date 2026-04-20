@@ -2,24 +2,32 @@
 # sro will scan for .sro/main.sro in project, nothing is there or syntax is invalid, hard fail
 # required only if project participates in `sro exec`
 # cwd is auto-resolved to master_dir + project.dir
-# primitives: exec, cd, env, log
+# primitives: exec, cd (will map to cwd), env, log
 # scope: all primitives are block-scoped, no leakage
+# each operations are executed, meaning setting env() 
 
 import { # import other sro files for execution blocks
-  ./build.sro
-  ./test/test.sro
+  "./build.sro",
+  "./test/test.sro"
 }
 
 init {
-    log("Installing dependencies!")
-    env("GOFLAGS", "-mod=mod")
-    exec("go mod download")
-    exec("go generate ./...")
+    log("Installing dependencies!"); # will add info, warning, error in the future for conditional logic and error handling
+    cd("cmd"); # cd to master_dir + project.dir + cd() value
+    env ( # scoped env block with no env leakage
+          GOFLAGS = "-mod=mod",
+          CGO_ENABLED = "0",
+          DB_URL = "postgres://localhost:5432"
+        ) {
+          exec("go mod download")
+          exec("go generate ./...")
+        };
+    cd("."); # fail if try to get out of project dir
+    exec("go test ./...");
 }
 
 check {
-    env("CGO_ENABLED", "0")
-    exec("go mod tidy")
-    exec("go vet ./...")
-    exec("staticcheck ./...")
+    exec("go mod tidy");
+    exec("go vet ./...");
+    exec("staticcheck ./...");
 }

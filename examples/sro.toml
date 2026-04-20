@@ -5,56 +5,69 @@
 
 master_dir = "~/work" # create if dont exist, handle relative and absolute path
 
-## projects
+# import other files, only support relative path
+# fail on circular import, force cannot import sro.toml
+import = [ 
+  "./other_config.toml",
+  "./example/work.toml"
+]
+## project
 # `sro sync` will clone these repos in relative path to master_dir
 # missing url dir or both will result in error
 # Having git repo inside master_dir that doesnt belong to the list below shows warning in `sro sync` whether user wants to remove it
-[projects.todo]
-url = "git@github.com:yourname/todo.git"
-dir = "todo" # will git clone at ~/work/todo
-sync = "clone"    # ← default behavior, implicit
-# sync = "ignore"   ← skip clone, leave alone if exists
-# sync = "disable"  ← skip clone, DELETE if exists
 
-[projects.calendar-ts]
-url = "git@github.com:yourname/calendar-ts.git"
-dir = "calendar-ts"
-sync = "clone"
+[project]
+todo = {
+  url = "git@github.com:yourname/todo.git", # projects can clone similar repos
+  dir = "todo", # will git clone at ~/work/todo, dir across projects cannot be the same
+  sync = "clone",    # ← default behavior, clone only if not exist, ignore if does
+  # sync = "ignore"   ← skip clone, leave alone if exists
+  # sync = "disable"  ← skip clone, DELETE if exists
+}
+calendar-ts = { # can declare multiple projects in a table
+  url = "git@github.com:yourname/calendar-ts.git"
+  dir = "calendar-ts"
+  sync = "clone"
+}
 
-[projects.sro]
-url = "git@github.com:yourname/sro.git"
-dir = "tools/sro" # will git clone at ~/work/tools/sro
-sync = "disable"
-
+[project] # multiple tables
+sro = {
+  url = "git@github.com:yourname/sro.git"
+  dir = "tools/sro" # will git clone at ~/work/tools/sro
+  sync = "disable"
+}
 ## exec aliases
 # each key maps to a list of project.block
 # run order is top-down, fail-fast
 # functions for `sro exec`
 # Hard fail at any step
 
-[exec.check] # make `sro exec check` available
-run = [ # exec chronologically
+[exec]
+check = [ # make `sro exec check` available and exec sequentially
     "todo.check", # execute check{} from project todo
     "calendar-ts.doctor", # execute doctor{} from project calendar-ts
     "sro.verify", # execute verify{} from project sro
 ]
 
-[exec.init] # make `sro exec init` available
-run = [
+init = [ # make `sro exec init` available
     "todo.init",
     "calendar-ts.init",
     "sro.init",
 ]
 
-[exec.build] # make `sro exec build` available
-run = [
+[exec]
+build = [ # make `sro exec build` available
     "todo.build",
     "sro.build",
 ]
 
-## profiles
-# `sro <insert action> --profile/-p oss` limits action scope to projects defined
-# if `sro sync` or `sro exec <action>` has projects outside profile, it will be ignored
+## task - run exec operations asynchronously
+# Example
+# `sro task oss` execute task `oss`
+# if an `exec` operation fail it will be notified while others continue as `exec` is already sequential.
 
-[profile.oss]
-projects = ["todo", "calendar-ts"]
+[task]
+oss = [
+  "check",
+  "build"
+]
