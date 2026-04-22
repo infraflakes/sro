@@ -55,6 +55,11 @@
             cmake
             goreleaser
           ];
+          shellHook = ''
+            export GOPATH="$PWD/.go"
+            export GOBIN="$GOPATH/bin"
+            export PATH="$GOBIN:$PATH"
+          '';
         };
 
         packages.default = buildSro {
