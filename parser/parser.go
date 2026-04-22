@@ -60,45 +60,30 @@ func (p *Parser) ParseProgram() *ast.Program {
 	program := &ast.Program{Statements: []ast.Node{}}
 
 	for p.curToken.Type != token.EOF {
+		var stmt ast.Stmt
 		switch p.curToken.Type {
 		case token.SANCTUARY:
-			stmt := p.parseSanctuaryDecl()
-			if stmt != nil {
-				program.Statements = append(program.Statements, stmt)
-			}
+			stmt = p.parseSanctuaryDecl()
 		case token.IMPORT:
-			stmt := p.parseImportDecl()
-			if stmt != nil {
-				program.Statements = append(program.Statements, stmt)
-			}
+			stmt = p.parseImportDecl()
 		case token.VAR:
-			stmt := p.parseVarDecl()
-			if stmt != nil {
-				program.Statements = append(program.Statements, stmt)
-			}
+			stmt = p.parseVarDecl()
 		case token.PR:
-			stmt := p.parseProjectDecl()
-			if stmt != nil {
-				program.Statements = append(program.Statements, stmt)
-			}
+			stmt = p.parseProjectDecl()
 		case token.FN:
-			stmt := p.parseFnDecl()
-			if stmt != nil {
-				program.Statements = append(program.Statements, stmt)
-			}
+			stmt = p.parseFnDecl()
 		case token.SEQ:
-			stmt := p.parseSeqDecl()
-			if stmt != nil {
-				program.Statements = append(program.Statements, stmt)
-			}
+			stmt = p.parseSeqDecl()
 		case token.PAR:
-			stmt := p.parseParDecl()
-			if stmt != nil {
-				program.Statements = append(program.Statements, stmt)
-			}
+			stmt = p.parseParDecl()
 		default:
 			p.errors = append(p.errors, fmt.Sprintf("unexpected token %s at %d:%d", p.curToken.Type, p.curToken.Line, p.curToken.Col))
 			p.nextToken()
+			continue
+		}
+		if stmt != nil {
+			program.Statements = append(program.Statements, stmt)
+			p.nextToken() // advance past statement token (semicolon or })
 		}
 	}
 
@@ -106,7 +91,7 @@ func (p *Parser) ParseProgram() *ast.Program {
 }
 
 func (p *Parser) parseSanctuaryDecl() ast.Stmt {
-	p.nextToken() // consume SANCTUARY
+	tok := p.curToken
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
@@ -118,46 +103,44 @@ func (p *Parser) parseSanctuaryDecl() ast.Stmt {
 		return nil
 	}
 	return &ast.SanctuaryDecl{
-		Token: p.curToken,
+		Token: tok,
 		Value: value,
 	}
 }
 
 func (p *Parser) parseImportDecl() ast.Stmt {
-	p.nextToken() // consume IMPORT
+	tok := p.curToken
 	if !p.expectPeek(token.LBRACKET) {
 		return nil
 	}
+	p.nextToken() // advance past [
 	paths := []string{}
-	for {
-		if !p.expectPeek(token.PATH_LIT) {
+	for p.curToken.Type != token.RBRACKET {
+		if p.curToken.Type != token.PATH_LIT {
+			p.errors = append(p.errors, fmt.Sprintf("expected path literal at %d:%d", p.curToken.Line, p.curToken.Col))
 			return nil
 		}
 		paths = append(paths, p.curToken.Literal)
-		if p.peekTokenIs(token.COMMA) {
-			p.nextToken()
-			continue
+		p.nextToken() // move past this path token
+		if p.curToken.Type == token.COMMA {
+			p.nextToken() // skip comma, move to next path or RBRACKET
+		} else if p.curToken.Type != token.RBRACKET {
+			p.errors = append(p.errors, fmt.Sprintf("expected ',' or ']' after path at %d:%d", p.curToken.Line, p.curToken.Col))
+			return nil
 		}
-		if p.peekTokenIs(token.RBRACKET) {
-			break
-		}
-		p.errors = append(p.errors, fmt.Sprintf("expected ',' or ']' in import list at %d:%d", p.peekToken.Line, p.peekToken.Col))
-		return nil
 	}
-	if !p.expectPeek(token.RBRACKET) {
-		return nil
-	}
+	// curToken is RBRACKET
 	if !p.expectPeek(token.SEMICOLON) {
 		return nil
 	}
 	return &ast.ImportDecl{
-		Token: p.curToken,
+		Token: tok,
 		Paths: paths,
 	}
 }
 
-func (p *Parser) parseVarDecl() ast.Stmt {
-	p.nextToken() // consume VAR
+func (p *Parser) parseVarDecl() *ast.VarDecl {
+	tok := p.curToken
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
@@ -165,33 +148,34 @@ func (p *Parser) parseVarDecl() ast.Stmt {
 	if !p.expectPeek(token.DECLARE) {
 		return nil
 	}
+	p.nextToken() // move to value (STRING or DOLLAR)
 	var value ast.Expr
-	switch p.peekToken.Type {
+	switch p.curToken.Type {
 	case token.STRING_LIT:
-		p.nextToken()
 		value = &ast.StringLit{Token: p.curToken, Value: p.curToken.Literal}
 	case token.DOLLAR:
 		p.nextToken() // consume $
-		if !p.expectPeek(token.IDENT) {
+		if p.curToken.Type != token.IDENT {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
 			return nil
 		}
 		value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
 	default:
-		p.errors = append(p.errors, fmt.Sprintf("expected string or variable reference at %d:%d", p.peekToken.Line, p.peekToken.Col))
+		p.errors = append(p.errors, fmt.Sprintf("expected string or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
 	if !p.expectPeek(token.SEMICOLON) {
 		return nil
 	}
 	return &ast.VarDecl{
-		Token: p.curToken,
+		Token: tok,
 		Name:  name,
 		Value: value,
 	}
 }
 
 func (p *Parser) parseProjectDecl() ast.Stmt {
-	p.nextToken() // consume PR
+	tok := p.curToken
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
@@ -199,6 +183,7 @@ func (p *Parser) parseProjectDecl() ast.Stmt {
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
+	p.nextToken() // advance past {
 	fields := []ast.ProjectField{}
 	for !p.curTokenIs(token.RBRACE) {
 		if p.curTokenIs(token.EOF) {
@@ -223,19 +208,18 @@ func (p *Parser) parseProjectDecl() ast.Stmt {
 		if !p.expectPeek(token.SEMICOLON) {
 			return nil
 		}
+		p.nextToken() // advance to next field or }
 	}
-	if !p.expectPeek(token.RBRACE) {
-		return nil
-	}
+	// curToken is RBRACE
 	return &ast.ProjectDecl{
-		Token:  p.curToken,
+		Token:  tok,
 		Name:   name,
 		Fields: fields,
 	}
 }
 
 func (p *Parser) parseFnDecl() ast.Stmt {
-	p.nextToken() // consume FN
+	tok := p.curToken
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
@@ -243,12 +227,11 @@ func (p *Parser) parseFnDecl() ast.Stmt {
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
+	p.nextToken() // advance past {
 	body := p.parseFnBody()
-	if !p.expectPeek(token.RBRACE) {
-		return nil
-	}
+	// curToken is RBRACE after body
 	return &ast.FnDecl{
-		Token: p.curToken,
+		Token: tok,
 		Name:  name,
 		Body:  body,
 	}
@@ -281,15 +264,17 @@ func (p *Parser) parseFnBody() []ast.FnStmt {
 		if stmt != nil {
 			stmts = append(stmts, stmt)
 		}
+		p.nextToken() // advance past ; to next token or }
 	}
 	return stmts
 }
 
 func (p *Parser) parseLogStmt() ast.FnStmt {
-	p.nextToken() // consume LOG
+	tok := p.curToken
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
+	p.nextToken() // advance past (
 	args := p.parseArgList()
 	if !p.expectPeek(token.RPAREN) {
 		return nil
@@ -298,16 +283,17 @@ func (p *Parser) parseLogStmt() ast.FnStmt {
 		return nil
 	}
 	return &ast.LogStmt{
-		Token: p.curToken,
+		Token: tok,
 		Args:  args,
 	}
 }
 
 func (p *Parser) parseExecStmt() ast.FnStmt {
-	p.nextToken() // consume EXEC
+	tok := p.curToken
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
+	p.nextToken() // advance past (
 	args := p.parseArgList()
 	if !p.expectPeek(token.RPAREN) {
 		return nil
@@ -316,7 +302,7 @@ func (p *Parser) parseExecStmt() ast.FnStmt {
 		return nil
 	}
 	return &ast.ExecStmt{
-		Token: p.curToken,
+		Token: tok,
 		Args:  args,
 	}
 }
@@ -339,7 +325,8 @@ func (p *Parser) parseArgList() []ast.Expr {
 			return args
 		}
 		if p.peekTokenIs(token.COMMA) {
-			p.nextToken()
+			p.nextToken() // to COMMA
+			p.nextToken() // to next argument
 			continue
 		}
 		break
@@ -348,7 +335,7 @@ func (p *Parser) parseArgList() []ast.Expr {
 }
 
 func (p *Parser) parseCdStmt() ast.FnStmt {
-	p.nextToken() // consume CD
+	tok := p.curToken
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
@@ -363,13 +350,13 @@ func (p *Parser) parseCdStmt() ast.FnStmt {
 		return nil
 	}
 	return &ast.CdStmt{
-		Token: p.curToken,
+		Token: tok,
 		Arg:   arg,
 	}
 }
 
 func (p *Parser) parseEnvBlock() ast.FnStmt {
-	p.nextToken() // consume ENV
+	tok := p.curToken
 	if !p.expectPeek(token.LBRACKET) {
 		return nil
 	}
@@ -403,22 +390,21 @@ func (p *Parser) parseEnvBlock() ast.FnStmt {
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
+	p.nextToken() // advance past {
 	body := p.parseFnBody()
-	if !p.expectPeek(token.RBRACE) {
-		return nil
-	}
+	// curToken is RBRACE after body
 	if !p.expectPeek(token.SEMICOLON) {
 		return nil
 	}
 	return &ast.EnvBlock{
-		Token: p.curToken,
+		Token: tok,
 		Pairs: pairs,
 		Body:  body,
 	}
 }
 
 func (p *Parser) parseSeqDecl() ast.Stmt {
-	p.nextToken() // consume SEQ
+	tok := p.curToken
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
@@ -426,11 +412,12 @@ func (p *Parser) parseSeqDecl() ast.Stmt {
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
+	p.nextToken() // advance past {
 	stmts := []ast.SeqStmt{}
 	for !p.curTokenIs(token.RBRACE) {
 		if p.curTokenIs(token.EOF) {
 			p.errors = append(p.errors, fmt.Sprintf("missing closing brace for seq at %d:%d", p.curToken.Line, p.curToken.Col))
-			return &ast.SeqDecl{Name: name, Stmts: stmts}
+			return &ast.SeqDecl{Token: tok, Name: name, Stmts: stmts}
 		}
 		var stmt ast.SeqStmt
 		if p.curTokenIs(token.SEQ) && p.peekTokenIs(token.DOT) {
@@ -441,19 +428,18 @@ func (p *Parser) parseSeqDecl() ast.Stmt {
 		if stmt != nil {
 			stmts = append(stmts, stmt)
 		}
+		p.nextToken() // advance past ; to next token or }
 	}
-	if !p.expectPeek(token.RBRACE) {
-		return nil
-	}
+	// curToken is RBRACE
 	return &ast.SeqDecl{
-		Token: p.curToken,
+		Token: tok,
 		Name:  name,
 		Stmts: stmts,
 	}
 }
 
 func (p *Parser) parseParDecl() ast.Stmt {
-	p.nextToken() // consume PAR
+	tok := p.curToken
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
@@ -461,11 +447,12 @@ func (p *Parser) parseParDecl() ast.Stmt {
 	if !p.expectPeek(token.LBRACE) {
 		return nil
 	}
+	p.nextToken() // advance past {
 	stmts := []ast.ParStmt{}
 	for !p.curTokenIs(token.RBRACE) {
 		if p.curTokenIs(token.EOF) {
 			p.errors = append(p.errors, fmt.Sprintf("missing closing brace for par at %d:%d", p.curToken.Line, p.curToken.Col))
-			return &ast.ParDecl{Name: name, Stmts: stmts}
+			return &ast.ParDecl{Token: tok, Name: name, Stmts: stmts}
 		}
 		var stmt ast.ParStmt
 		if p.curTokenIs(token.SEQ) && p.peekTokenIs(token.DOT) {
@@ -476,22 +463,19 @@ func (p *Parser) parseParDecl() ast.Stmt {
 		if stmt != nil {
 			stmts = append(stmts, stmt)
 		}
+		p.nextToken() // advance past ; to next token or }
 	}
-	if !p.expectPeek(token.RBRACE) {
-		return nil
-	}
+	// curToken is RBRACE
 	return &ast.ParDecl{
-		Token: p.curToken,
+		Token: tok,
 		Name:  name,
 		Stmts: stmts,
 	}
 }
 
-func (p *Parser) parseFnCall() ast.SeqStmt {
-	if !p.expectPeek(token.IDENT) {
-		return nil
-	}
-	fnName := p.curToken.Literal
+func (p *Parser) parseFnCall() *ast.FnCall {
+	fnNameToken := p.curToken
+	fnName := fnNameToken.Literal
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
@@ -512,14 +496,14 @@ func (p *Parser) parseFnCall() ast.SeqStmt {
 		return nil
 	}
 	return &ast.FnCall{
-		Token:       p.curToken,
+		Token:       fnNameToken,
 		FnName:      fnName,
 		ProjectName: projectName,
 	}
 }
 
-func (p *Parser) parseSeqRef() ast.SeqStmt {
-	p.nextToken() // consume SEQ
+func (p *Parser) parseSeqRef() *ast.SeqRef {
+	seqToken := p.curToken
 	if !p.expectPeek(token.DOT) {
 		return nil
 	}
@@ -531,7 +515,7 @@ func (p *Parser) parseSeqRef() ast.SeqStmt {
 		return nil
 	}
 	return &ast.SeqRef{
-		Token:   p.curToken,
+		Token:   seqToken,
 		SeqName: seqName,
 	}
 }

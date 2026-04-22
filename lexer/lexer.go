@@ -21,7 +21,7 @@ func New(input string) *Lexer {
 	l := &Lexer{
 		input: input,
 		line:  1,
-		col:   1,
+		col:   0,
 	}
 	l.readChar()
 	return l
@@ -37,7 +37,7 @@ func (l *Lexer) readChar() {
 	l.readPos++
 	if l.ch == '\n' {
 		l.line++
-		l.col = 1
+		l.col = 0
 	} else {
 		l.col++
 	}
@@ -46,8 +46,13 @@ func (l *Lexer) readChar() {
 func (l *Lexer) NextToken() token.Token {
 	var tok token.Token
 
-	l.skipWhitespace()
-	l.skipComment()
+	for {
+		l.skipWhitespace()
+		if l.ch != '#' {
+			break
+		}
+		l.skipComment()
+	}
 
 	tok.Line = l.line
 	tok.Col = l.col
@@ -71,7 +76,7 @@ func (l *Lexer) NextToken() token.Token {
 		tok = l.makeToken(token.COMMA)
 	case '.':
 		if l.peek() == '/' {
-			tok = l.readPath()
+			return l.readPath()
 		} else {
 			tok = l.makeToken(token.DOT)
 		}
@@ -123,7 +128,7 @@ func (l *Lexer) makeToken(tt token.TokenType) token.Token {
 }
 
 func (l *Lexer) skipWhitespace() {
-	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' {
+	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' || l.ch == '\n' {
 		l.readChar()
 	}
 }

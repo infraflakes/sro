@@ -23,7 +23,7 @@ func TestNextToken(t *testing.T) {
 		{",", []token.Token{{Type: token.COMMA, Literal: ","}}},
 		{".", []token.Token{{Type: token.DOT, Literal: "."}}},
 		{";", []token.Token{{Type: token.SEMICOLON, Literal: ";"}}},
-		{"$", []token.Token{{Type: token.DOLLAR, Literal: "$}}},
+		{"$", []token.Token{{Type: token.DOLLAR, Literal: "$"}}},
 
 		// Keywords
 		{"sanctuary", []token.Token{{Type: token.SANCTUARY, Literal: "sanctuary"}}},
@@ -127,8 +127,8 @@ var y := "next";`
 		tokens = append(tokens, tok)
 	}
 
-	// Should have 5 tokens: VAR, STRING, SEMICOLON, VAR, STRING, SEMICOLON
-	expectedTypes := []token.TokenType{token.VAR, token.STRING_LIT, token.SEMICOLON, token.VAR, token.STRING_LIT, token.SEMICOLON}
+	// Should have 10 tokens: VAR, IDENT, DECLARE, STRING_LIT, SEMICOLON, VAR, IDENT, DECLARE, STRING_LIT, SEMICOLON
+	expectedTypes := []token.TokenType{token.VAR, token.IDENT, token.DECLARE, token.STRING_LIT, token.SEMICOLON, token.VAR, token.IDENT, token.DECLARE, token.STRING_LIT, token.SEMICOLON}
 	if len(tokens) != len(expectedTypes) {
 		t.Fatalf("token count mismatch: got %d, want %d", len(tokens), len(expectedTypes))
 	}
@@ -141,8 +141,8 @@ var y := "next";`
 
 func TestErrorCases(t *testing.T) {
 	tests := []struct {
-		input    string
-		errMsg   string
+		input  string
+		errMsg string
 	}{
 		{`"unterminated`, "unterminated string"},
 		{"bare:", "unexpected character: :"},

@@ -41,7 +41,7 @@ pr todo {
 
 fn init {
     log("Installing dependencies!"); # will add info, warning, error in the future for conditional logic and error handling
-    var deps := 4;
+    var deps := "4";
     log("Currently we have", $deps, "dependencies!");
     cd("cmd"); # cd to pr.dir + cd() value
     env [ # scoped env block with no env leakage
