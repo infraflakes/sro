@@ -101,9 +101,6 @@ func (l *Lexer) NextToken() token.Token {
 		}
 	case '"':
 		tok = l.readString()
-	case '#':
-		tok = l.makeToken(token.ILLEGAL)
-		tok.Literal = "unexpected character: #"
 	default:
 		if unicode.IsLetter(rune(l.ch)) || l.ch == '_' {
 			tok = l.readIdent()
@@ -156,7 +153,8 @@ func (l *Lexer) readString() token.Token {
 
 	var lit strings.Builder
 	for l.ch != '"' && l.ch != 0 {
-		if l.ch == '\\' {
+		switch l.ch {
+		case '\\':
 			l.readChar()
 			switch l.ch {
 			case '"':
@@ -171,9 +169,9 @@ func (l *Lexer) readString() token.Token {
 				lit.WriteByte('\\')
 				lit.WriteByte(l.ch)
 			}
-		} else if l.ch == '\n' {
+		case '\n':
 			lit.WriteByte('\n')
-		} else {
+		default:
 			lit.WriteByte(l.ch)
 		}
 		l.readChar()

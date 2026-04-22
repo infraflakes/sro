@@ -83,8 +83,8 @@ func (p *Parser) ParseProgram() *ast.Program {
 		}
 		if stmt != nil {
 			program.Statements = append(program.Statements, stmt)
-			p.nextToken() // advance past statement token (semicolon or })
 		}
+		p.nextToken() // advance past failed keyword or statement delimiter
 	}
 
 	return program
@@ -276,12 +276,16 @@ func (p *Parser) parseLogStmt() ast.FnStmt {
 	}
 	p.nextToken() // advance past (
 	args := p.parseArgList()
-	if !p.expectPeek(token.RPAREN) {
+	if !p.curTokenIs(token.RPAREN) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ')' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
-	if !p.expectPeek(token.SEMICOLON) {
+	p.nextToken() // consume )
+	if !p.curTokenIs(token.SEMICOLON) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
+	// semicolon will be consumed by ParseProgram
 	return &ast.LogStmt{
 		Token: tok,
 		Args:  args,
@@ -295,10 +299,13 @@ func (p *Parser) parseExecStmt() ast.FnStmt {
 	}
 	p.nextToken() // advance past (
 	args := p.parseArgList()
-	if !p.expectPeek(token.RPAREN) {
+	if !p.curTokenIs(token.RPAREN) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ')' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
-	if !p.expectPeek(token.SEMICOLON) {
+	p.nextToken() // consume )
+	if !p.curTokenIs(token.SEMICOLON) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
 	return &ast.ExecStmt{
@@ -309,6 +316,9 @@ func (p *Parser) parseExecStmt() ast.FnStmt {
 
 func (p *Parser) parseArgList() []ast.Expr {
 	args := []ast.Expr{}
+	if p.curTokenIs(token.RPAREN) {
+		return args // empty arg list
+	}
 	for {
 		switch p.curToken.Type {
 		case token.STRING_LIT:
@@ -326,9 +336,17 @@ func (p *Parser) parseArgList() []ast.Expr {
 		}
 		if p.peekTokenIs(token.COMMA) {
 			p.nextToken() // to COMMA
-			p.nextToken() // to next argument
+			p.nextToken() // to next argument or RPAREN
+			if p.curTokenIs(token.RPAREN) {
+				break // trailing comma
+			}
 			continue
 		}
+		if p.peekTokenIs(token.RPAREN) {
+			p.nextToken() // advance to RPAREN
+			break
+		}
+		// If neither comma nor RPAREN after argument, it's an error but will be caught by caller's RPAREN check
 		break
 	}
 	return args
@@ -376,6 +394,9 @@ func (p *Parser) parseEnvBlock() ast.FnStmt {
 		pairs = append(pairs, ast.EnvPair{Key: key, Value: value})
 		if p.peekTokenIs(token.COMMA) {
 			p.nextToken()
+			if p.peekTokenIs(token.RBRACKET) {
+				break // trailing comma
+			}
 			continue
 		}
 		if p.peekTokenIs(token.RBRACKET) {
