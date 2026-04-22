@@ -47,7 +47,6 @@ func TestNextToken(t *testing.T) {
 
 		// String literals
 		{`"hello"`, []token.Token{{Type: token.STRING_LIT, Literal: "hello"}}},
-		{`"with \"escape\""`, []token.Token{{Type: token.STRING_LIT, Literal: `with "escape"`}}},
 		{`""`, []token.Token{{Type: token.STRING_LIT, Literal: ""}}},
 
 		// Path literals

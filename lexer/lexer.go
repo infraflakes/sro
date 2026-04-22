@@ -153,27 +153,7 @@ func (l *Lexer) readString() token.Token {
 
 	var lit strings.Builder
 	for l.ch != '"' && l.ch != 0 {
-		switch l.ch {
-		case '\\':
-			l.readChar()
-			switch l.ch {
-			case '"':
-				lit.WriteByte('"')
-			case '\\':
-				lit.WriteByte('\\')
-			case 'n':
-				lit.WriteByte('\n')
-			case 't':
-				lit.WriteByte('\t')
-			default:
-				lit.WriteByte('\\')
-				lit.WriteByte(l.ch)
-			}
-		case '\n':
-			lit.WriteByte('\n')
-		default:
-			lit.WriteByte(l.ch)
-		}
+		lit.WriteByte(l.ch)
 		l.readChar()
 	}
 

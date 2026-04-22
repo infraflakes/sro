@@ -2,56 +2,101 @@ package main
 
 import (
 	"fmt"
-
 	"os"
 
-	"github.com/infraflakes/sro/ast"
-	"github.com/infraflakes/sro/lexer"
-	"github.com/infraflakes/sro/parser"
+	"github.com/infraflakes/sro/config"
+	"github.com/infraflakes/sro/runner"
+	srSync "github.com/infraflakes/sro/sync"
+	"github.com/spf13/cobra"
 )
 
+var configPath string
+
 func main() {
-	data, err := os.ReadFile("examples/main.sro")
+	var rootCmd = &cobra.Command{
+		Use:   "sro",
+		Short: "SRO - Serein Repository Orchestrator",
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "main.sro", "path to config file")
+
+	var syncCmd = &cobra.Command{
+		Use:   "sync",
+		Short: "Clone/sync project repositories",
+		Args:  cobra.ExactArgs(0),
+		Run: func(cmd *cobra.Command, args []string) {
+			runSync()
+		},
+	}
+
+	var seqCmd = &cobra.Command{
+		Use:   "seq <name>",
+		Short: "Run a sequential block",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			runSeq(args[0])
+		},
+	}
+
+	var parCmd = &cobra.Command{
+		Use:   "par <name>",
+		Short: "Run a parallel block",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			runPar(args[0])
+		},
+	}
+
+	rootCmd.AddCommand(syncCmd, seqCmd, parCmd)
+
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func loadConfig() *config.Config {
+	cfg, err := config.Load(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error reading file: %v\n", err)
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	input := string(data)
+	return cfg
+}
 
-	l := lexer.New(input)
-	p := parser.New(l)
-	prog := p.ParseProgram()
-
-	if len(p.Errors()) > 0 {
-		for _, err := range p.Errors() {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
-		}
+func runSync() {
+	cfg := loadConfig()
+	fmt.Printf("sanctuary: %s\n", cfg.Sanctuary)
+	fmt.Printf("projects:  %d\n\n", len(cfg.Projects))
+	if err := srSync.Run(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "sync error: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println("done")
+}
 
-	var sanctuary, importCnt, vars, project, fn, seq, par int
-	for _, stmt := range prog.Statements {
-		switch stmt.(type) {
-		case *ast.SanctuaryDecl:
-			sanctuary++
-		case *ast.ImportDecl:
-			importCnt++
-		case *ast.VarDecl:
-			vars++
-		case *ast.ProjectDecl:
-			project++
-		case *ast.FnDecl:
-			fn++
-		case *ast.SeqDecl:
-			seq++
-		case *ast.ParDecl:
-			par++
-		default:
-			fmt.Fprintf(os.Stderr, "unknown statement type: %T\n", stmt)
-			os.Exit(1)
-		}
+func runSeq(name string) {
+	cfg := loadConfig()
+	if err := config.ResolveUse(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
 	}
+	r := runner.New(cfg)
+	if err := r.RunSeq(name); err != nil {
+		fmt.Fprintf(os.Stderr, "seq error: %v\n", err)
+		os.Exit(1)
+	}
+}
 
-	fmt.Printf("%d sanctuary, %d import, %d vars, %d project, %d fn, %d seq, %d par\n",
-		sanctuary, importCnt, vars, project, fn, seq, par)
+func runPar(name string) {
+	cfg := loadConfig()
+	if err := config.ResolveUse(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	r := runner.New(cfg)
+	if err := r.RunPar(name); err != nil {
+		fmt.Fprintf(os.Stderr, "par error: %v\n", err)
+		os.Exit(1)
+	}
 }

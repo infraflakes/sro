@@ -387,10 +387,22 @@ func (p *Parser) parseEnvBlock() ast.FnStmt {
 		if !p.expectPeek(token.ASSIGN) {
 			return nil
 		}
-		if !p.expectPeek(token.STRING_LIT) {
+		p.nextToken() // advance past =
+		var value ast.Expr
+		switch p.curToken.Type {
+		case token.STRING_LIT:
+			value = &ast.StringLit{Token: p.curToken, Value: p.curToken.Literal}
+		case token.DOLLAR:
+			p.nextToken()
+			if p.curToken.Type != token.IDENT {
+				p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
+				return nil
+			}
+			value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
+		default:
+			p.errors = append(p.errors, fmt.Sprintf("expected string literal or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
 			return nil
 		}
-		value := p.curToken.Literal
 		pairs = append(pairs, ast.EnvPair{Key: key, Value: value})
 		if p.peekTokenIs(token.COMMA) {
 			p.nextToken()
@@ -443,6 +455,14 @@ func (p *Parser) parseSeqDecl() ast.Stmt {
 		var stmt ast.SeqStmt
 		if p.curTokenIs(token.SEQ) && p.peekTokenIs(token.DOT) {
 			stmt = p.parseSeqRef()
+		} else if p.curTokenIs(token.PAR) && p.peekTokenIs(token.DOT) {
+			p.errors = append(p.errors, fmt.Sprintf(
+				"par blocks cannot be referenced, use CLI to run par at %d:%d",
+				p.curToken.Line, p.curToken.Col))
+			p.nextToken() // .
+			p.nextToken() // X
+			p.nextToken() // ;
+			// fall through — stmt is nil, bottom p.nextToken() will advance further if needed
 		} else {
 			stmt = p.parseFnCall()
 		}
@@ -478,6 +498,14 @@ func (p *Parser) parseParDecl() ast.Stmt {
 		var stmt ast.ParStmt
 		if p.curTokenIs(token.SEQ) && p.peekTokenIs(token.DOT) {
 			stmt = p.parseSeqRef()
+		} else if p.curTokenIs(token.PAR) && p.peekTokenIs(token.DOT) {
+			p.errors = append(p.errors, fmt.Sprintf(
+				"par blocks cannot be referenced, use CLI to run par at %d:%d",
+				p.curToken.Line, p.curToken.Col))
+			p.nextToken() // .
+			p.nextToken() // X
+			p.nextToken() // ;
+			// fall through — stmt is nil, bottom p.nextToken() will advance further if needed
 		} else {
 			stmt = p.parseFnCall()
 		}

@@ -367,6 +367,7 @@ func TestErrorCases(t *testing.T) {
 		{`pr x {`, "missing closing brace"},
 		{`fn bad { unknown }`, "unexpected token"},
 		{`pr x { url = "x"; unknown = "y";`, "invalid project field key"},
+		{`seq s { par.x; }`, "par blocks cannot be referenced"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

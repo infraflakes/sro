@@ -1,0 +1,8 @@
+sanctuary = "$PWD/test";
+
+pr sro {
+  url = "https://github.com/infraflakes/sro.git";
+  dir = "sro";
+  sync = "clone";
+  use = ".sro/main.sro";
+}

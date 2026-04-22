@@ -179,7 +179,7 @@ func (eb *EnvBlock) fnStmt()              {}
 
 type EnvPair struct {
 	Key   string
-	Value string
+	Value Expr
 }
 
 // SeqStmt interface (statements inside seq/par blocks)
