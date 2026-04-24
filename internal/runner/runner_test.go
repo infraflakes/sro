@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infraflakes/sro/ast"
-	"github.com/infraflakes/sro/config"
-	"github.com/infraflakes/sro/token"
+	"github.com/infraflakes/sro/internal/dsl/ast"
+	"github.com/infraflakes/sro/internal/config"
+	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
 func newTestToken(typ token.TokenType) token.Token {

@@ -1,3 +1,3 @@
-## Serein Orchestrator
+## Serein Repository Orchestrator
 
 ---

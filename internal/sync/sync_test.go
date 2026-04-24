@@ -8,7 +8,7 @@ import (
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/infraflakes/sro/config"
+	"github.com/infraflakes/sro/internal/config"
 )
 
 func makeRepo(t *testing.T, dir string) {

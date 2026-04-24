@@ -4,10 +4,10 @@ fn init {
 }
 
 fn build {
-  log("Building Serein Orchestrator CLI!");
+  log("Building sro CLI!");
   exec("go mod tidy");
   env[CGO_ENABLED = "0"] {
-      exec("go build -ldflags='-s -w' -o sro .");
+      exec("go build -ldflags='-s -w' -o bin/sro .");
   };
 }
 

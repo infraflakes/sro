@@ -2,7 +2,7 @@ VERSION ?= $(shell git describe --tags --always --dirty --first-parent 2>/dev/nu
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(VERSION)" -o sro .
+	CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(VERSION)" -o bin/sro .
 
 .PHONY: fmt
 fmt:

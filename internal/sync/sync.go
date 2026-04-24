@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	git "github.com/go-git/go-git/v5"
-	"github.com/infraflakes/sro/config"
+	"github.com/infraflakes/sro/internal/config"
 )
 
 func Run(cfg *config.Config) error {

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infraflakes/sro/ast"
-	"github.com/infraflakes/sro/lexer"
-	"github.com/infraflakes/sro/token"
+	"github.com/infraflakes/sro/internal/dsl/ast"
+	"github.com/infraflakes/sro/internal/dsl/lexer"
+	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
 func TestParseProgram(t *testing.T) {

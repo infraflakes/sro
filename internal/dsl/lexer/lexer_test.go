@@ -3,7 +3,7 @@ package lexer
 import (
 	"testing"
 
-	"github.com/infraflakes/sro/token"
+	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
 func TestNextToken(t *testing.T) {
