@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/config"
+	"github.com/infraflakes/sro/internal/dsl/ast"
 )
 
 type Runner struct {

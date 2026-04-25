@@ -1,8 +1,10 @@
 # Every syntax error fails at parse time instead of runtime
-
+# By default sro picks up config at ~/.config/sro/config.sro, use `--config` or `-c` to override.
+# Use `sro validate` to check config validity
 # Set your ultimate work directory! (no relative path)
-# sanctuary = "/tmp/work";  # create if dont exist
-sanctuary = "$HOME/dev";  # recommended
+shell = "bash"; # first class primitive
+var workdir := 'echo $HOME/dev'; # ' for shell, will return values, so you can do arithmetics here
+sanctuary = $workdir;  # recommended
 
 # import other files, only support relative path
 # fail on circular import
@@ -26,7 +28,7 @@ pr todo {
     dir = "todo";  # will git clone at ~/dev/todo, dir across projects cannot be the same
     sync = "clone"; # ← default behavior, clone only if not exist, ignore if does
     # sync = "ignore";   ← skip clone
-    
+
     # `use` is for importing sro files which depends on the exitence of correlated project
     # without `use`, using the global `import{}` may fail at parse time.
     # Path for `use` MUST be relative path
@@ -40,7 +42,7 @@ pr todo {
 # scope: all primitives are block-scoped, no leakage
 
 fn init {
-    log("Installing dependencies!"); # will add info, warning, error in the future for conditional logic and error handling
+    log("Installing dependencies! For project at: ", $workdir, "!!");
     var deps := "4";
     log("Currently we have", $deps, "dependencies!");
     cd("cmd"); # cd to pr.dir + cd() value

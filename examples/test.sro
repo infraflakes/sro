@@ -1,4 +1,4 @@
-sanctuary = "$PWD/test";
+sanctuary = "$HOME/dev";
 
 pr sro {
   url = "https://github.com/infraflakes/sro.git";

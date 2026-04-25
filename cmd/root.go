@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/infraflakes/sro/internal/config"
 	"github.com/spf13/cobra"
@@ -16,8 +17,13 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "main.sro", "path to config file")
-	rootCmd.AddCommand(syncCmd, seqCmd, parCmd)
+	defaultConfig := "config.sro"
+	if configDir, err := os.UserConfigDir(); err == nil {
+		defaultConfig = filepath.Join(configDir, "sro", "config.sro")
+	}
+
+	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", defaultConfig, "path to config file")
+	rootCmd.AddCommand(syncCmd, seqCmd, parCmd, validateCmd)
 }
 
 func Execute() {

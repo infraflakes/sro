@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/config"
+	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
 

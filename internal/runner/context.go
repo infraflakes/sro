@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/config"
+	"github.com/infraflakes/sro/internal/dsl/ast"
 )
 
 type execContext struct {
