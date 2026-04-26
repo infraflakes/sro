@@ -254,3 +254,86 @@ func TestMultiFileParseOrder(t *testing.T) {
 		t.Fatalf("variable across files not resolved: %v", cfg.Vars)
 	}
 }
+
+func TestDuplicateFnSeqParNames(t *testing.T) {
+	// C1: duplicate fn/seq/par names
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := "shell = `bash`;\nsanctuary = `/tmp`;\nfn dup { log(`a`); }\nfn dup { log(`b`); }"
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(file)
+	if err == nil || !strings.Contains(err.Error(), "duplicate function: dup") {
+		t.Fatalf("expected duplicate function error, got: %v", err)
+	}
+
+	content2 := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\nseq dup { check(pr.test); }\nseq dup { build(pr.test); }"
+	if err := os.WriteFile(file, []byte(content2), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load(file)
+	if err == nil || !strings.Contains(err.Error(), "duplicate seq: dup") {
+		t.Fatalf("expected duplicate seq error, got: %v", err)
+	}
+
+	content3 := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\npar dup { check(pr.test); }\npar dup { build(pr.test); }"
+	if err := os.WriteFile(file, []byte(content3), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Load(file)
+	if err == nil || !strings.Contains(err.Error(), "duplicate par: dup") {
+		t.Fatalf("expected duplicate par error, got: %v", err)
+	}
+}
+
+func TestInterpolationInBacktick(t *testing.T) {
+	// C4: ${var} interpolation in backtick during merge
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := "shell = `bash`;\nsanctuary = `/tmp`;\nvar string name = `world`;\nvar string greeting = `hello ${name}`;"
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(file)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.Vars["greeting"] != "hello world" {
+		t.Fatalf("interpolation wrong: got %s, want hello world", cfg.Vars["greeting"])
+	}
+}
+
+func TestShellVarWithInterpolation(t *testing.T) {
+	// C5: shell var with ${var} interpolation
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := "shell = `bash`;\nsanctuary = `/tmp`;\nvar string name = `world`;\nvar shell greeting = `echo hello ${name}`;"
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(file)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.Vars["greeting"] != "hello world" {
+		t.Fatalf("shell var interpolation wrong: got %s, want hello world", cfg.Vars["greeting"])
+	}
+}
+
+func TestProjectFieldWithVarRef(t *testing.T) {
+	// C6: project field with $var reference
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := "shell = `bash`;\nsanctuary = `/tmp`;\nvar string myurl = `http://example.com`;\npr x { url = $myurl; dir = `d`; }"
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(file)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	if cfg.Projects["x"].URL != "http://example.com" {
+		t.Fatalf("project field with var ref wrong: got %s", cfg.Projects["x"].URL)
+	}
+}

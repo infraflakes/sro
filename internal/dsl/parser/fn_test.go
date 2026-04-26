@@ -80,3 +80,102 @@ func TestParseEnvWithTrailingComma(t *testing.T) {
 		t.Fatalf("expected key X, got %s", env.Pairs[0].Key)
 	}
 }
+
+func TestParseEmptyFnBody(t *testing.T) {
+	// P3: empty fn body
+	input := "\nfn empty {}"
+	l := lexer.New(input)
+	p := New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 1 {
+		t.Fatalf("got %d statements", len(prog.Statements))
+	}
+	fn, ok := prog.Statements[0].(*ast.FnDecl)
+	if !ok {
+		t.Fatalf("expected FnDecl")
+	}
+	if len(fn.Body) != 0 {
+		t.Fatalf("expected 0 fn stmts, got %d", len(fn.Body))
+	}
+}
+
+func TestParseEmptyEnvPairs(t *testing.T) {
+	// P6: empty env pairs - this is actually a syntax error in the language
+	// The parser expects at least one env pair inside []
+	// So this test documents that empty env pairs are not allowed
+	input := "\nfn init {\n    env [] { log(`x`); };\n}"
+	l := lexer.New(input)
+	p := New(l)
+	_ = p.ParseProgram()
+	// This should produce a parse error
+	if len(p.Errors()) == 0 {
+		t.Fatalf("expected parse error for empty env pairs")
+	}
+}
+
+func TestParseExecWithInterpolation(t *testing.T) {
+	// P9: interpolation in exec
+	input := "\nfn init {\n    exec(`hello ${name}`);\n}"
+	l := lexer.New(input)
+	p := New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 1 {
+		t.Fatalf("got %d statements", len(prog.Statements))
+	}
+	fn, ok := prog.Statements[0].(*ast.FnDecl)
+	if !ok {
+		t.Fatalf("expected FnDecl")
+	}
+	exec, ok := fn.Body[0].(*ast.ExecStmt)
+	if !ok {
+		t.Fatalf("expected ExecStmt, got %T", fn.Body[0])
+	}
+	backtick, ok := exec.Value.(*ast.BacktickLit)
+	if !ok {
+		t.Fatalf("expected BacktickLit, got %T", exec.Value)
+	}
+	if len(backtick.Parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(backtick.Parts))
+	}
+	if backtick.Parts[0].Value != "hello " || backtick.Parts[0].IsVar {
+		t.Fatalf("first part wrong")
+	}
+	if backtick.Parts[1].Value != "name" || !backtick.Parts[1].IsVar {
+		t.Fatalf("second part wrong")
+	}
+}
+
+func TestParseLogWithVarRef(t *testing.T) {
+	// P10: log with bare $var ref
+	input := "\nfn init {\n    log($myvar);\n}"
+	l := lexer.New(input)
+	p := New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 1 {
+		t.Fatalf("got %d statements", len(prog.Statements))
+	}
+	fn, ok := prog.Statements[0].(*ast.FnDecl)
+	if !ok {
+		t.Fatalf("expected FnDecl")
+	}
+	log, ok := fn.Body[0].(*ast.LogStmt)
+	if !ok {
+		t.Fatalf("expected LogStmt, got %T", fn.Body[0])
+	}
+	varRef, ok := log.Value.(*ast.VarRef)
+	if !ok {
+		t.Fatalf("expected VarRef, got %T", log.Value)
+	}
+	if varRef.Name != "myvar" {
+		t.Fatalf("expected var name myvar, got %s", varRef.Name)
+	}
+}

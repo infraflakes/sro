@@ -63,6 +63,34 @@ par test {
 	}
 }
 
+func TestParseEmptySeqAndPar(t *testing.T) {
+	// P4: empty seq/par bodies
+	input := "\nseq empty {}\npar empty {}"
+	l := lexer.New(input)
+	p := New(l)
+	prog := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("errors: %v", p.Errors())
+	}
+	if len(prog.Statements) != 2 {
+		t.Fatalf("got %d statements", len(prog.Statements))
+	}
+	seq, ok := prog.Statements[0].(*ast.SeqDecl)
+	if !ok {
+		t.Fatalf("expected SeqDecl")
+	}
+	if len(seq.Stmts) != 0 {
+		t.Fatalf("expected 0 seq stmts, got %d", len(seq.Stmts))
+	}
+	par, ok := prog.Statements[1].(*ast.ParDecl)
+	if !ok {
+		t.Fatalf("expected ParDecl")
+	}
+	if len(par.Stmts) != 0 {
+		t.Fatalf("expected 0 par stmts, got %d", len(par.Stmts))
+	}
+}
+
 func TestFullFile(t *testing.T) {
 	input := "sanctuary = `$HOME/dev`;\nimport [ ./other_config.sro, ./example/work.sro ];\nvar string port1 = `127.0.0.1:8080`;\nvar string port2 = `192.168.1.3:2425`;\nvar string port3 = `${port1}`;\nvar string idx_port = `3`;\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}\nfn init {\n    log(`Installing dependencies!`);\n    var string deps = `4`;\n    log(`Currently we have ${deps} dependencies!`);\n    cd(`cmd`);\n    env [\n          GOFLAGS = `-mod=mod`,\n          CGO_ENABLED = `0`,\n          DB_URL = `postgres://localhost:5432`\n        ] {\n          env [CGO_ENABLED = `1`] {\n            exec(`go build .`);\n          };\n          exec(`go mod download`);\n          exec(`go generate ./...`);\n        };\n    cd(`.`);\n    exec(`go test ./...`);\n    exec(`staticcheck ./...`);\n}\nseq init {\n    check(pr.todo);\n    init(pr.calendar-ts);\n}\npar ci {\n    build(pr.todo);\n    seq.init;\n}"
 	l := lexer.New(input)
@@ -147,6 +175,10 @@ func TestErrorCases(t *testing.T) {
 		{"fn bad { unknown }", "unexpected token"},
 		{"pr x { url = `x`; unknown = `y`;", "invalid project field key"},
 		{"seq s { par.x; }", "par blocks cannot be referenced"},
+		{"fn bad", "expected {"}, // P11: missing { after fn name
+		{"seq bad", "expected {"}, // P11: missing { after seq name
+		{"par bad", "expected {"}, // P11: missing { after par name
+		{"par p { par.x; }", "par blocks cannot be referenced"}, // P12: par.X in par body
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
