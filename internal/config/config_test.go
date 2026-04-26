@@ -11,7 +11,8 @@ import (
 func TestLoadBasic(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "$HOME/dev";
+	content := `shell = "bash";
+sanctuary = "/tmp/dev";
 var a := "hello";
 pr test { url = "http://example.com"; dir = "test"; }
 fn greet { log("hi"); }
@@ -25,7 +26,10 @@ fn greet { log("hi"); }
 		t.Fatalf("Load error: %v", err)
 	}
 
-	if cfg.Sanctuary != os.Getenv("HOME")+"/dev" {
+	if cfg.Shell != "bash" {
+		t.Fatalf("shell wrong: got %s", cfg.Shell)
+	}
+	if cfg.Sanctuary != "/tmp/dev" {
 		t.Fatalf("sanctuary wrong: got %s", cfg.Sanctuary)
 	}
 	if len(cfg.Vars) != 1 || cfg.Vars["a"] != "hello" {
@@ -45,7 +49,8 @@ func TestImportResolution(t *testing.T) {
 	otherFile := filepath.Join(dir, "other.sro")
 
 	otherContent := `var extra := "from-other";`
-	mainContent := `sanctuary = "/tmp";
+	mainContent := `shell = "bash";
+sanctuary = "/tmp";
 import [ ./other.sro ];
 var x := $extra;
 `
@@ -72,8 +77,8 @@ func TestCircularImport(t *testing.T) {
 	a := filepath.Join(dir, "a.sro")
 	b := filepath.Join(dir, "b.sro")
 
-	contentA := `import [ ./b.sro ]; sanctuary = "/tmp";`
-	contentB := `import [ ./a.sro ]; sanctuary = "/tmp";`
+	contentA := `shell = "bash"; import [ ./b.sro ]; sanctuary = "/tmp";`
+	contentB := `shell = "bash"; import [ ./a.sro ]; sanctuary = "/tmp";`
 
 	if err := os.WriteFile(a, []byte(contentA), 0o644); err != nil {
 		t.Fatal(err)
@@ -91,7 +96,8 @@ func TestCircularImport(t *testing.T) {
 func TestDuplicates(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 sanctuary = "/other";
 `
 	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
@@ -103,7 +109,8 @@ sanctuary = "/other";
 		t.Fatalf("expected duplicate sanctuary error, got: %v", err)
 	}
 
-	content2 := `sanctuary = "/tmp";
+	content2 := `shell = "bash";
+sanctuary = "/tmp";
 var x := "a";
 var x := "b";
 `
@@ -115,7 +122,8 @@ var x := "b";
 		t.Fatalf("expected duplicate variable error, got: %v", err)
 	}
 
-	content3 := `sanctuary = "/tmp";
+	content3 := `shell = "bash";
+sanctuary = "/tmp";
 pr p1 { url = "u"; dir = "d1"; }
 pr p1 { url = "u2"; dir = "d2"; }
 `
@@ -131,7 +139,8 @@ pr p1 { url = "u2"; dir = "d2"; }
 func TestDuplicateVarInFnBody(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 pr test { url = "http://example.com"; dir = "test"; }
 fn bad {
     var x := "a";
@@ -154,7 +163,8 @@ fn bad {
 func TestVariableResolution(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 var a := "x";
 var b := $a;
 var c := $b;
@@ -176,7 +186,8 @@ var c := $b;
 func TestUndefinedVariable(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 var x := $missing;
 `
 	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
@@ -189,10 +200,85 @@ var x := $missing;
 	}
 }
 
+func TestShellExecResolution(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := `shell = "bash";
+sanctuary = "/tmp";
+var test_var := ` + "`echo hello`;"
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(file)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+
+	if cfg.Vars["test_var"] != "hello" {
+		t.Fatalf("shell exec resolution wrong: got %s, want hello", cfg.Vars["test_var"])
+	}
+}
+
+func TestMissingShellError(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := `sanctuary = "/tmp";
+var test_var := ` + "`echo hello`;"
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(file)
+	if err == nil || !strings.Contains(err.Error(), "shell must be declared") {
+		t.Fatalf("expected shell must be declared error, got: %v", err)
+	}
+}
+
+func TestSanctuaryAbsolutePathValidation(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := `shell = "bash";
+sanctuary = "relative/path";
+`
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(file)
+	if err == nil || !strings.Contains(err.Error(), "sanctuary must be an absolute path") {
+		t.Fatalf("expected absolute path error, got: %v", err)
+	}
+}
+
+func TestSanctuaryWithVarRef(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := `shell = "bash";
+var workdir := ` + "`echo /tmp/test`" + `;
+sanctuary = $workdir;
+`
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(file)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+
+	if cfg.Sanctuary != "/tmp/test" {
+		t.Fatalf("sanctuary with var ref wrong: got %s, want /tmp/test", cfg.Sanctuary)
+	}
+}
+
 func TestSanctuaryEnvExpansion(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "$HOME/dev";`
+	// Use shell exec to expand HOME instead of os.ExpandEnv
+	content := `shell = "bash";
+var sanctuary_path := ` + "`echo $HOME/dev`" + `;
+sanctuary = $sanctuary_path;`
 	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +290,7 @@ func TestSanctuaryEnvExpansion(t *testing.T) {
 
 	expected := os.Getenv("HOME") + "/dev"
 	if cfg.Sanctuary != expected {
-		t.Fatalf("sanctuary expansion wrong: got %s, want %s", cfg.Sanctuary, expected)
+		t.Fatalf("sanctuary with shell exec wrong: got %s, want %s", cfg.Sanctuary, expected)
 	}
 }
 
@@ -212,7 +298,8 @@ func TestMissingRequiredFields(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
 
-	contentNoURL := `sanctuary = "/tmp";
+	contentNoURL := `shell = "bash";
+sanctuary = "/tmp";
 pr p { dir = "d"; }
 `
 	if err := os.WriteFile(file, []byte(contentNoURL), 0o644); err != nil {
@@ -223,7 +310,8 @@ pr p { dir = "d"; }
 		t.Fatalf("expected missing url error, got: %v", err)
 	}
 
-	contentNoDir := `sanctuary = "/tmp";
+	contentNoDir := `shell = "bash";
+sanctuary = "/tmp";
 pr p { url = "u"; }
 `
 	if err := os.WriteFile(file, []byte(contentNoDir), 0o644); err != nil {
@@ -238,7 +326,8 @@ pr p { url = "u"; }
 func TestInvalidSyncValue(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 pr p { url = "u"; dir = "d"; sync = "invalid"; }
 `
 	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
@@ -254,7 +343,8 @@ pr p { url = "u"; dir = "d"; sync = "invalid"; }
 func TestSeqParReferenceValidation(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 fn real { log("hi"); }
 seq s { unknown(pr.p); }
 par p { fake(pr.q); }
@@ -278,7 +368,8 @@ par p { fake(pr.q); }
 func TestDuplicateDir(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 pr a { url = "ua"; dir = "shared"; }
 pr b { url = "ub"; dir = "shared"; }
 `
@@ -298,7 +389,7 @@ func TestMultiFileParseOrder(t *testing.T) {
 	b := filepath.Join(dir, "b.sro")
 
 	contentA := `sanctuary = "/tmp"; var a := "from-a";`
-	contentB := `import [ ./a.sro ]; var b := $a;`
+	contentB := `shell = "bash"; import [ ./a.sro ]; var b := $a;`
 
 	if err := os.WriteFile(a, []byte(contentA), 0o644); err != nil {
 		t.Fatal(err)
@@ -334,7 +425,8 @@ func TestResolveUse(t *testing.T) {
 
 	// Create main config that uses the use file
 	mainFile := filepath.Join(dir, "main.sro")
-	mainContent := fmt.Sprintf(`sanctuary = "%s";
+	mainContent := fmt.Sprintf(`shell = "bash";
+sanctuary = "%s";
 pr test { url = "http://example.com"; dir = "test"; use = "use.sro"; }
 `, dir)
 	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
@@ -374,7 +466,8 @@ pr test { url = "http://example.com"; dir = "test"; use = "use.sro"; }
 func TestResolveUseFileNotFound(t *testing.T) {
 	dir := t.TempDir()
 	mainFile := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 pr test { url = "http://example.com"; dir = "test"; use = "nonexistent.sro"; }
 `
 	if err := os.WriteFile(mainFile, []byte(content), 0o644); err != nil {
@@ -400,14 +493,15 @@ func TestResolveUseDisallowSanctuaryAndPr(t *testing.T) {
 
 	// Create a use file with sanctuary (should be disallowed)
 	useFile := filepath.Join(dir, "bad-use.sro")
-	useContent := `sanctuary = "/tmp";
+	useContent := `shell = "bash"; sanctuary = "/tmp";
 `
 	if err := os.WriteFile(useFile, []byte(useContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	mainFile := filepath.Join(dir, "main.sro")
-	mainContent := fmt.Sprintf(`sanctuary = "/tmp";
+	mainContent := fmt.Sprintf(`shell = "bash";
+sanctuary = "/tmp";
 pr test { url = "http://example.com"; dir = "test"; use = "%s"; }
 `, filepath.Base(useFile))
 	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
@@ -429,7 +523,8 @@ func TestLoadWithoutResolveUse(t *testing.T) {
 	dir := t.TempDir()
 	// Config with undefined fn reference but no use file - should NOT fail
 	mainFile := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 pr test { url = "http://example.com"; dir = "test"; }
 fn bad { log("hello"); }
 `
@@ -451,7 +546,8 @@ fn bad { log("hello"); }
 func TestUndefinedVarInFnBody(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 pr test { url = "http://example.com"; dir = "test"; }
 fn badfn { log($undefined); }
 `
@@ -477,7 +573,8 @@ fn badfn { log($undefined); }
 func TestSeqCycleDetection(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := `sanctuary = "/tmp";
+	content := `shell = "bash";
+sanctuary = "/tmp";
 pr test { url = "http://example.com"; dir = "test"; }
 seq a { seq.b; }
 seq b { seq.a; }

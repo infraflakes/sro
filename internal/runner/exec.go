@@ -47,7 +47,7 @@ func (ctx *execContext) execLog(s *ast.LogStmt) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(strings.Join(args, " "))
+	fmt.Println(strings.Join(args, ""))
 	return nil
 }
 
@@ -56,10 +56,10 @@ func (ctx *execContext) execExec(s *ast.ExecStmt) error {
 	if err != nil {
 		return err
 	}
-	cmdStr := strings.Join(args, " ")
+	cmdStr := strings.Join(args, "")
 	fmt.Printf("  exec  %s\n", cmdStr)
 
-	cmd := exec.Command("sh", "-c", cmdStr)
+	cmd := exec.Command(ctx.cfg.Shell, "-c", cmdStr)
 	cmd.Dir = ctx.workDir
 	cmd.Env = ctx.buildEnv()
 	cmd.Stdout = os.Stdout
@@ -98,6 +98,15 @@ func (ctx *execContext) execVarDecl(s *ast.VarDecl) error {
 			return fmt.Errorf("undefined variable: $%s", v.Name)
 		}
 		ctx.vars[s.Name] = val
+	case *ast.ShellExec:
+		cmd := exec.Command(ctx.cfg.Shell, "-c", v.Command)
+		cmd.Dir = ctx.workDir
+		cmd.Env = ctx.buildEnv()
+		out, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("shell execution failed for var %s: %w", s.Name, err)
+		}
+		ctx.vars[s.Name] = strings.TrimRight(string(out), "\n")
 	default:
 		return fmt.Errorf("unexpected value type: %T", v)
 	}

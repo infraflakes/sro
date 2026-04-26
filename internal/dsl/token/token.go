@@ -16,6 +16,7 @@ const (
 	IDENT      TokenType = "IDENT"
 	STRING_LIT TokenType = "STRING"
 	PATH_LIT   TokenType = "PATH"
+	SHELL_LIT  TokenType = "SHELL_LIT"
 
 	ASSIGN    TokenType = "="
 	DECLARE   TokenType = ":="
@@ -41,6 +42,7 @@ const (
 	LOG       TokenType = "LOG"
 	EXEC      TokenType = "EXEC"
 	CD        TokenType = "CD"
+	SHELL     TokenType = "SHELL"
 )
 
 var keywords = map[string]TokenType{
@@ -55,6 +57,7 @@ var keywords = map[string]TokenType{
 	"log":       LOG,
 	"exec":      EXEC,
 	"cd":        CD,
+	"shell":     SHELL,
 }
 
 func LookupIdent(ident string) TokenType {

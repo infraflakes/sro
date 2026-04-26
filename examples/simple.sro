@@ -1,4 +1,6 @@
-sanctuary = "$HOME/dev";
+shell = "bash";
+var workdir := `echo $HOME/dev`;
+sanctuary = $workdir;
 
 pr sro {
     url = "git@github.com:infraflakes/sro.git";

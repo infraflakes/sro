@@ -9,6 +9,7 @@ import (
 )
 
 type Config struct {
+	Shell     string
 	Sanctuary string
 	Projects  map[string]*Project
 	Functions map[string]*ast.FnDecl

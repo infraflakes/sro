@@ -2,7 +2,8 @@ package config
 
 import (
 	"fmt"
-	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/infraflakes/sro/internal/dsl/ast"
 )
@@ -19,11 +20,26 @@ func merge(programs []*ast.Program) (*Config, error) {
 	for _, prog := range programs {
 		for _, stmt := range prog.Statements {
 			switch s := stmt.(type) {
+			case *ast.ShellDecl:
+				if cfg.Shell != "" {
+					return nil, fmt.Errorf("duplicate shell declaration")
+				}
+				cfg.Shell = s.Value
+
 			case *ast.SanctuaryDecl:
 				if cfg.Sanctuary != "" {
 					return nil, fmt.Errorf("duplicate sanctuary declaration")
 				}
-				cfg.Sanctuary = os.ExpandEnv(s.Value)
+				switch v := s.Value.(type) {
+				case *ast.StringLit:
+					cfg.Sanctuary = v.Value
+				case *ast.VarRef:
+					resolved, ok := cfg.Vars[v.Name]
+					if !ok {
+						return nil, fmt.Errorf("undefined variable: $%s", v.Name)
+					}
+					cfg.Sanctuary = resolved
+				}
 
 			case *ast.VarDecl:
 				name := s.Name
@@ -39,6 +55,16 @@ func merge(programs []*ast.Program) (*Config, error) {
 						return nil, fmt.Errorf("undefined variable: $%s", v.Name)
 					}
 					cfg.Vars[name] = resolved
+				case *ast.ShellExec:
+					if cfg.Shell == "" {
+						return nil, fmt.Errorf("shell must be declared before using shell execution ('...')")
+					}
+					cmd := exec.Command(cfg.Shell, "-c", v.Command)
+					out, err := cmd.Output()
+					if err != nil {
+						return nil, fmt.Errorf("shell execution failed for var %s: %w", name, err)
+					}
+					cfg.Vars[name] = strings.TrimRight(string(out), "\n")
 				}
 
 			case *ast.ProjectDecl:

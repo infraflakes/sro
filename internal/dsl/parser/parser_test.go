@@ -46,6 +46,30 @@ func TestParseProgram(t *testing.T) {
 				token.VAR: 2,
 			},
 		},
+		{
+			name:  "shell declaration",
+			input: `shell = "bash";`,
+			wantStmts: map[token.TokenType]int{
+				token.SHELL: 1,
+			},
+		},
+		{
+			name:  "var with shell exec",
+			input: `shell = "bash"; var x := ` + "`echo hello`;",
+			wantStmts: map[token.TokenType]int{
+				token.SHELL: 1,
+				token.VAR:   1,
+			},
+		},
+		{
+			name:  "sanctuary with var ref",
+			input: `shell = "bash"; var dir := ` + "`echo /tmp`" + `; sanctuary = $dir;`,
+			wantStmts: map[token.TokenType]int{
+				token.SHELL:     1,
+				token.VAR:       1,
+				token.SANCTUARY: 1,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -85,6 +109,8 @@ func TestParseProgram(t *testing.T) {
 					counts[token.SEQ]++
 				case *ast.ParDecl:
 					counts[token.PAR]++
+				case *ast.ShellDecl:
+					counts[token.SHELL]++
 				}
 			}
 			for k, want := range tt.wantStmts {
@@ -333,7 +359,7 @@ par ci {
 	// Spot-check some nodes:
 	// - Sanctuary value
 	san, _ := prog.Statements[0].(*ast.SanctuaryDecl)
-	if san.Value != "$HOME/dev" {
+	if sl, ok := san.Value.(*ast.StringLit); !ok || sl.Value != "$HOME/dev" {
 		t.Fatalf("sanctuary value wrong")
 	}
 	// - Import paths

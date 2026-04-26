@@ -37,6 +37,7 @@ func TestNextToken(t *testing.T) {
 		{"log", []token.Token{{Type: token.LOG, Literal: "log"}}},
 		{"exec", []token.Token{{Type: token.EXEC, Literal: "exec"}}},
 		{"cd", []token.Token{{Type: token.CD, Literal: "cd"}}},
+		{"shell", []token.Token{{Type: token.SHELL, Literal: "shell"}}},
 
 		// Identifiers
 		{"todo", []token.Token{{Type: token.IDENT, Literal: "todo"}}},
@@ -48,6 +49,10 @@ func TestNextToken(t *testing.T) {
 		// String literals
 		{`"hello"`, []token.Token{{Type: token.STRING_LIT, Literal: "hello"}}},
 		{`""`, []token.Token{{Type: token.STRING_LIT, Literal: ""}}},
+
+		// Shell literals (backticks)
+		{"`echo hello`", []token.Token{{Type: token.SHELL_LIT, Literal: "echo hello"}}},
+		{"``", []token.Token{{Type: token.SHELL_LIT, Literal: ""}}},
 
 		// Path literals
 		{"./other_config.sro", []token.Token{{Type: token.PATH_LIT, Literal: "./other_config.sro"}}},
@@ -147,6 +152,7 @@ func TestErrorCases(t *testing.T) {
 		{"bare:", "unexpected character: :"},
 		{`"test`, "unterminated string"},
 		{"@", "unexpected character: @"},
+		{"`unterminated", "unterminated shell string"},
 	}
 
 	for _, tt := range tests {

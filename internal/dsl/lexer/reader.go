@@ -57,6 +57,34 @@ func (l *Lexer) readString() token.Token {
 	}
 }
 
+func (l *Lexer) readShellString() token.Token {
+	line := l.line
+	col := l.col
+	l.readChar() // consume opening `
+
+	var lit strings.Builder
+	for l.ch != '`' && l.ch != 0 {
+		lit.WriteByte(l.ch)
+		l.readChar()
+	}
+
+	if l.ch != '`' {
+		return token.Token{
+			Type:    token.ILLEGAL,
+			Literal: "unterminated shell string",
+			Line:    line,
+			Col:     col,
+		}
+	}
+
+	return token.Token{
+		Type:    token.SHELL_LIT,
+		Literal: lit.String(),
+		Line:    line,
+		Col:     col,
+	}
+}
+
 func (l *Lexer) readPath() token.Token {
 	line := l.line
 	col := l.col

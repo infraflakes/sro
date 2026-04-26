@@ -7,7 +7,7 @@ import (
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
-func (p *Parser) parseSanctuaryDecl() ast.Stmt {
+func (p *Parser) parseShellDecl() ast.Stmt {
 	tok := p.curToken
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
@@ -19,10 +19,37 @@ func (p *Parser) parseSanctuaryDecl() ast.Stmt {
 	if !p.expectPeek(token.SEMICOLON) {
 		return nil
 	}
-	return &ast.SanctuaryDecl{
+	return &ast.ShellDecl{
 		Token: tok,
 		Value: value,
 	}
+}
+
+func (p *Parser) parseSanctuaryDecl() ast.Stmt {
+	tok := p.curToken
+	if !p.expectPeek(token.ASSIGN) {
+		return nil
+	}
+	p.nextToken() // move to value
+	var value ast.Expr
+	switch p.curToken.Type {
+	case token.STRING_LIT:
+		value = &ast.StringLit{Token: p.curToken, Value: p.curToken.Literal}
+	case token.DOLLAR:
+		p.nextToken()
+		if p.curToken.Type != token.IDENT {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
+			return nil
+		}
+		value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
+	default:
+		p.errors = append(p.errors, fmt.Sprintf("expected string or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
+		return nil
+	}
+	if !p.expectPeek(token.SEMICOLON) {
+		return nil
+	}
+	return &ast.SanctuaryDecl{Token: tok, Value: value}
 }
 
 func (p *Parser) parseImportDecl() ast.Stmt {
@@ -77,6 +104,8 @@ func (p *Parser) parseVarDecl() *ast.VarDecl {
 			return nil
 		}
 		value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
+	case token.SHELL_LIT:
+		value = &ast.ShellExec{Token: p.curToken, Command: p.curToken.Literal}
 	default:
 		p.errors = append(p.errors, fmt.Sprintf("expected string or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil

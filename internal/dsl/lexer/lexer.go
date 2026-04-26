@@ -100,6 +100,8 @@ func (l *Lexer) NextToken() token.Token {
 		}
 	case '"':
 		tok = l.readString()
+	case '`':
+		tok = l.readShellString()
 	default:
 		if unicode.IsLetter(rune(l.ch)) || l.ch == '_' {
 			tok = l.readIdent()

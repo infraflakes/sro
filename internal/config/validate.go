@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"maps"
+	"path/filepath"
 	"strings"
 
 	"github.com/infraflakes/sro/internal/dsl/ast"
@@ -114,6 +115,8 @@ func validateExpr(expr ast.Expr, localVars map[string]bool, fnName string, stmtI
 		}
 	case *ast.StringLit:
 		// Always valid
+	case *ast.ShellExec:
+		// Always valid (shell execution is resolved at merge time)
 	}
 	return nil
 }
@@ -121,8 +124,17 @@ func validateExpr(expr ast.Expr, localVars map[string]bool, fnName string, stmtI
 func validateBase(cfg *Config) error {
 	var errs []string
 
+	if cfg.Shell == "" {
+		errs = append(errs, "shell is required")
+	}
+
 	if cfg.Sanctuary == "" {
 		errs = append(errs, "sanctuary is required")
+	}
+
+	// Validate sanctuary is absolute path
+	if cfg.Sanctuary != "" && !filepath.IsAbs(cfg.Sanctuary) {
+		errs = append(errs, fmt.Sprintf("sanctuary must be an absolute path, got %q", cfg.Sanctuary))
 	}
 
 	for _, proj := range cfg.Projects {

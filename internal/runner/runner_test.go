@@ -90,6 +90,7 @@ func newFnCall(fnName, projectName string) *ast.FnCall {
 
 func testConfig() *config.Config {
 	return &config.Config{
+		Shell:     "bash",
 		Sanctuary: "/tmp/sanctuary",
 		Projects: map[string]*config.Project{
 			"testproj": {
@@ -132,6 +133,7 @@ func TestExecLog(t *testing.T) {
 
 	stmt := newLogStmt([]ast.Expr{
 		newStringLit("hello"),
+		newStringLit(" "),
 		newStringLit("world"),
 	})
 
@@ -238,8 +240,6 @@ func TestExecEnvBlock(t *testing.T) {
 
 	innerBody := []ast.FnStmt{
 		newExecStmt([]ast.Expr{
-			newStringLit("sh"),
-			newStringLit("-c"),
 			newStringLit("env"),
 		}),
 	}
@@ -280,23 +280,17 @@ func TestExecEnvBlockNestedOverride(t *testing.T) {
 			newLogStmt([]ast.Expr{newStringLit("outer-start")}),
 			// Print env to capture X
 			newExecStmt([]ast.Expr{
-				newStringLit("sh"),
-				newStringLit("-c"),
 				newStringLit("env"),
 			}),
 			newEnvBlock([]ast.EnvPair{{Key: "X", Value: newStringLit("2")}}, []ast.FnStmt{
 				newLogStmt([]ast.Expr{newStringLit("inner")}),
 				// Print env to capture X
 				newExecStmt([]ast.Expr{
-					newStringLit("sh"),
-					newStringLit("-c"),
 					newStringLit("env"),
 				}),
 			}),
 			// After inner block, X should be back to 1
 			newExecStmt([]ast.Expr{
-				newStringLit("sh"),
-				newStringLit("-c"),
 				newStringLit("env"),
 			}),
 			newLogStmt([]ast.Expr{newStringLit("outer-end")}),
@@ -371,8 +365,6 @@ func TestExecEnvBlockVarRefs(t *testing.T) {
 	// Test env value with var ref
 	innerBody := []ast.FnStmt{
 		newExecStmt([]ast.Expr{
-			newStringLit("sh"),
-			newStringLit("-c"),
 			newStringLit("env"),
 		}),
 	}

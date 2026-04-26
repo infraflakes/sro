@@ -5,12 +5,21 @@ import "github.com/infraflakes/sro/internal/dsl/token"
 // Statement types
 type SanctuaryDecl struct {
 	Token token.Token
-	Value string
+	Value Expr
 }
 
 func (sd *SanctuaryDecl) TokenLiteral() string { return sd.Token.Literal }
 func (sd *SanctuaryDecl) Pos() (int, int)      { return sd.Token.Line, sd.Token.Col }
 func (sd *SanctuaryDecl) stmtNode()            {}
+
+type ShellDecl struct {
+	Token token.Token
+	Value string
+}
+
+func (sd *ShellDecl) TokenLiteral() string { return sd.Token.Literal }
+func (sd *ShellDecl) Pos() (int, int)      { return sd.Token.Line, sd.Token.Col }
+func (sd *ShellDecl) stmtNode()            {}
 
 type ImportDecl struct {
 	Token token.Token

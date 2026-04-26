@@ -62,6 +62,8 @@ func (p *Parser) ParseProgram() *ast.Program {
 	for p.curToken.Type != token.EOF {
 		var stmt ast.Stmt
 		switch p.curToken.Type {
+		case token.SHELL:
+			stmt = p.parseShellDecl()
 		case token.SANCTUARY:
 			stmt = p.parseSanctuaryDecl()
 		case token.IMPORT:
