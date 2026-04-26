@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,10 +13,15 @@ import (
 type Runner struct {
 	cfg    *config.Config
 	Writer io.Writer
+	Ctx    context.Context
 }
 
 func New(cfg *config.Config) *Runner {
-	return &Runner{cfg: cfg, Writer: os.Stdout}
+	return &Runner{cfg: cfg, Writer: os.Stdout, Ctx: context.Background()}
+}
+
+func NewWithContext(cfg *config.Config, ctx context.Context) *Runner {
+	return &Runner{cfg: cfg, Writer: os.Stdout, Ctx: ctx}
 }
 
 func (r *Runner) ExecuteFnCall(call *ast.FnCall) error {

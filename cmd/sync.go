@@ -23,6 +23,18 @@ var syncCmd = &cobra.Command{
 func runSync() {
 	cfg := loadConfig()
 
+	// Fallback to plain stdout if --no-tui is set
+	if noTui {
+		fmt.Printf("sanctuary: %s\n", cfg.Sanctuary)
+		fmt.Printf("projects:  %d\n\n", len(cfg.Projects))
+		if err := srSync.Run(cfg); err != nil {
+			fmt.Fprintf(os.Stderr, "sync error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("done")
+		return
+	}
+
 	model := &tui.Model{
 		Type:     "sync",
 		Name:     "sync",

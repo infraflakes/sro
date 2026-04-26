@@ -10,6 +10,7 @@ import (
 )
 
 var configPath string
+var noTui bool
 
 var rootCmd = &cobra.Command{
 	Use:   "sro",
@@ -23,6 +24,7 @@ func init() {
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", defaultConfig, "path to config file")
+	rootCmd.PersistentFlags().BoolVar(&noTui, "no-tui", false, "disable TUI and use plain stdout")
 	rootCmd.AddCommand(syncCmd, seqCmd, parCmd, validateCmd)
 }
 

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 
@@ -34,6 +35,16 @@ func runSeq(name string) {
 		os.Exit(1)
 	}
 
+	// Fallback to plain stdout if --no-tui is set
+	if noTui {
+		r := runner.New(cfg)
+		if err := r.RunSeq(name); err != nil {
+			fmt.Fprintf(os.Stderr, "seq error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	model := &tui.Model{
 		Type:     "seq",
 		Name:     name,
@@ -55,6 +66,9 @@ func runSeq(name string) {
 	}
 
 	// Run seq in background goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
 		for i, stmt := range seq.Stmts {
 			model.Tasks[i].Status = "running"
@@ -64,7 +78,7 @@ func runSeq(name string) {
 				model.Tasks[i-1].Expanded = false
 			}
 
-			r := runner.New(cfg)
+			r := runner.NewWithContext(cfg, ctx)
 			r.Writer = model.Tasks[i].Writer
 
 			var err error
@@ -86,7 +100,7 @@ func runSeq(name string) {
 		model.Status = "ok"
 	}()
 
-	if err := tui.Run(model); err != nil {
+	if err := tui.RunWithContext(ctx, model); err != nil {
 		fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
 		os.Exit(1)
 	}

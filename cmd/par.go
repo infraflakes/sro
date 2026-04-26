@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -35,6 +36,16 @@ func runPar(name string) {
 		os.Exit(1)
 	}
 
+	// Fallback to plain stdout if --no-tui is set
+	if noTui {
+		r := runner.New(cfg)
+		if err := r.RunPar(name); err != nil {
+			fmt.Fprintf(os.Stderr, "par error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	model := &tui.Model{
 		Type:     "par",
 		Name:     name,
@@ -56,6 +67,9 @@ func runPar(name string) {
 	}
 
 	// Run par in background goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	go func() {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
@@ -69,7 +83,7 @@ func runPar(name string) {
 				model.Tasks[idx].Status = "running"
 				model.Tasks[idx].Expanded = true
 
-				r := runner.New(cfg)
+				r := runner.NewWithContext(cfg, ctx)
 				r.Writer = model.Tasks[idx].Writer
 
 				var err error
@@ -102,7 +116,7 @@ func runPar(name string) {
 		mu.Unlock()
 	}()
 
-	if err := tui.Run(model); err != nil {
+	if err := tui.RunWithContext(ctx, model); err != nil {
 		fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
 		os.Exit(1)
 	}
