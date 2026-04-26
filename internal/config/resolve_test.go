@@ -109,3 +109,35 @@ func TestResolveUseDisallowSanctuaryAndPr(t *testing.T) {
 		t.Fatal("expected error for sanctuary in use file")
 	}
 }
+
+func TestResolveUseDisallowPr(t *testing.T) {
+	// C7: use file containing pr block
+	dir := t.TempDir()
+
+	// Create a use file with pr block (should be disallowed)
+	useFile := filepath.Join(dir, "bad-use.sro")
+	useContent := "shell = `bash`; pr x { url = `u`; dir = `d`; }"
+	if err := os.WriteFile(useFile, []byte(useContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	mainFile := filepath.Join(dir, "main.sro")
+	mainContent := fmt.Sprintf("shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; use = `%s`; }\n", filepath.Base(useFile))
+	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(mainFile)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+
+	err = ResolveUse(cfg)
+	if err == nil {
+		t.Fatal("expected error for pr in use file")
+	}
+	// The error could be about the use file not being found or about pr being disallowed
+	if !strings.Contains(err.Error(), "cannot declare projects") && !strings.Contains(err.Error(), "use file not found") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

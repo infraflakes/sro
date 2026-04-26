@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -70,6 +69,32 @@ func TestParseProgram(t *testing.T) {
 				token.SANCTUARY: 1,
 			},
 		},
+		{
+			name:        "P1: var missing type annotation",
+			input:       "var x = `hello`;",
+			wantErr:     true,
+			errContains: "expected 'string' or 'shell'",
+		},
+		{
+			name:        "P2: var with invalid type",
+			input:       "var number x = `5`;",
+			wantErr:     true,
+			errContains: "expected 'string' or 'shell'",
+		},
+		{
+			name:  "P5: empty import list",
+			input: "import [];",
+			wantStmts: map[token.TokenType]int{
+				token.IMPORT: 1,
+			},
+		},
+		{
+			name:  "P7: trailing comma in import",
+			input: "import [ ./a.sro, ];",
+			wantStmts: map[token.TokenType]int{
+				token.IMPORT: 1,
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -85,7 +110,13 @@ func TestParseProgram(t *testing.T) {
 				if p.Errors() == nil {
 					t.Fatalf("expected error containing %q, got none", tt.errContains)
 				}
-				found := slices.Contains(p.Errors(), tt.errContains)
+				found := false
+				for _, err := range p.Errors() {
+					if strings.Contains(err, tt.errContains) {
+						found = true
+						break
+					}
+				}
 				if !found {
 					t.Fatalf("expected error containing %q, got %v", tt.errContains, p.Errors())
 				}
@@ -120,6 +151,27 @@ func TestParseProgram(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseProjectDeclDuplicateFields(t *testing.T) {
+	// P13: duplicate project field keys
+	input := "\npr x {\n    url = `a`;\n    url = `b`;\n    dir = `d`;\n}"
+	l := lexer.New(input)
+	p := New(l)
+	prog := p.ParseProgram()
+	// Parser currently accepts duplicates - this test documents current behavior
+	// If we want to enforce uniqueness, we'd need to add validation
+	if len(p.Errors()) > 0 {
+		t.Fatalf("parse errors: %v", p.Errors())
+	}
+	proj, ok := prog.Statements[0].(*ast.ProjectDecl)
+	if !ok {
+		t.Fatalf("expected *ProjectDecl, got %T", prog.Statements[0])
+	}
+	// Currently both url fields are present
+	if len(proj.Fields) != 3 {
+		t.Fatalf("expected 3 fields (including duplicate url), got %d", len(proj.Fields))
 	}
 }
 

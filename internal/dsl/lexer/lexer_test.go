@@ -56,6 +56,15 @@ func TestNextToken(t *testing.T) {
 
 		// Variable references
 		{"$port1", []token.Token{{Type: token.DOLLAR, Literal: "$"}, {Type: token.IDENT, Literal: "port1"}}},
+
+		// L1: Backtick containing ${var} — verify raw content is returned as-is
+		{"`hello ${name}`", []token.Token{{Type: token.BACKTICK, Literal: "hello ${name}"}}},
+
+		// L3: Multi-line backtick
+		{"`line1\nline2`", []token.Token{{Type: token.BACKTICK, Literal: "line1\nline2"}}},
+
+		// L4: Empty input
+		{"", []token.Token{}},
 	}
 
 	for _, tt := range tests {
@@ -127,6 +136,50 @@ func TestComments(t *testing.T) {
 
 	// Should have 12 tokens: VAR, STRING_KW, IDENT, ASSIGN, BACKTICK, SEMICOLON, VAR, STRING_KW, IDENT, ASSIGN, BACKTICK, SEMICOLON
 	expectedTypes := []token.TokenType{token.VAR, token.STRING_KW, token.IDENT, token.ASSIGN, token.BACKTICK, token.SEMICOLON, token.VAR, token.STRING_KW, token.IDENT, token.ASSIGN, token.BACKTICK, token.SEMICOLON}
+	if len(tokens) != len(expectedTypes) {
+		t.Fatalf("token count mismatch: got %d, want %d", len(tokens), len(expectedTypes))
+	}
+	for i, tt := range expectedTypes {
+		if tokens[i].Type != tt {
+			t.Fatalf("token %d: expected %q, got %q", i, tt, tokens[i].Type)
+		}
+	}
+}
+
+func TestConsecutiveComments(t *testing.T) {
+	// L5: Consecutive comments
+	input := "# a\n# b\nvar"
+	l := New(input)
+	tokens := []token.Token{}
+	for {
+		tok := l.NextToken()
+		if tok.Type == token.EOF {
+			break
+		}
+		tokens = append(tokens, tok)
+	}
+
+	// Should have only VAR token
+	if len(tokens) != 1 || tokens[0].Type != token.VAR {
+		t.Fatalf("expected single VAR token, got %v", tokens)
+	}
+}
+
+func TestCommentAtEOF(t *testing.T) {
+	// L6: Comment at EOF without trailing newline
+	input := "var string x = `a`; # comment"
+	l := New(input)
+	tokens := []token.Token{}
+	for {
+		tok := l.NextToken()
+		if tok.Type == token.EOF {
+			break
+		}
+		tokens = append(tokens, tok)
+	}
+
+	// Should have VAR, STRING_KW, IDENT, ASSIGN, BACKTICK, SEMICOLON (6 tokens)
+	expectedTypes := []token.TokenType{token.VAR, token.STRING_KW, token.IDENT, token.ASSIGN, token.BACKTICK, token.SEMICOLON}
 	if len(tokens) != len(expectedTypes) {
 		t.Fatalf("token count mismatch: got %d, want %d", len(tokens), len(expectedTypes))
 	}
