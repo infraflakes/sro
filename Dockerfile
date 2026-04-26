@@ -1,6 +1,6 @@
 FROM golang:1.26-alpine
 
-RUN apk add --no-cache fish curl
+RUN apk add --no-cache fish curl git
 RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin
 
 WORKDIR /mnt

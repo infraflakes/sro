@@ -128,6 +128,29 @@ pr p1 { url = "u2"; dir = "d2"; }
 	}
 }
 
+func TestDuplicateVarInFnBody(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "main.sro")
+	content := `sanctuary = "/tmp";
+pr test { url = "http://example.com"; dir = "test"; }
+fn bad {
+    var x := "a";
+    var x := "b";
+}
+`
+	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(file)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	err = validateFull(cfg)
+	if err == nil || !strings.Contains(err.Error(), "duplicate variable") {
+		t.Fatalf("expected duplicate variable error, got: %v", err)
+	}
+}
+
 func TestVariableResolution(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")

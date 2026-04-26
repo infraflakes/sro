@@ -12,11 +12,12 @@ func validateFnBody(stmts []ast.FnStmt, localVars map[string]bool, fnName string
 	for i, stmt := range stmts {
 		switch s := stmt.(type) {
 		case *ast.VarDecl:
-			// Check that var refs in the value are valid
+			if localVars[s.Name] {
+				return fmt.Errorf("function %q: duplicate variable %q", fnName, s.Name)
+			}
 			if err := validateExpr(s.Value, localVars, fnName, i); err != nil {
 				return err
 			}
-			// Add this var to local scope for subsequent statements
 			localVars[s.Name] = true
 		case *ast.LogStmt:
 			for _, arg := range s.Args {
