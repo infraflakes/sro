@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/gdamore/tcell/v3/vt"
 	srSync "github.com/infraflakes/sro/internal/sync"
 	"github.com/infraflakes/sro/internal/tui"
 	"github.com/spf13/cobra"
@@ -36,21 +36,22 @@ func runSync() {
 	}
 
 	model := &tui.Model{
-		Type:     "sync",
-		Name:     "sync",
-		Status:   "running",
-		Selected: 0,
+		Type:         "sync",
+		Name:         "sync",
+		Status:       "running",
+		Selected:     0,
+		ScrollOffset: 0,
 	}
 
-	// Create a buffer per repo
+	// Create a vterm per repo
 	for _, proj := range cfg.Projects {
-		buf := &bytes.Buffer{}
+		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}))
+		vterm.Start()
 		model.Tasks = append(model.Tasks, tui.Task{
 			Label:    proj.Name,
 			Status:   "pending",
 			Expanded: false,
-			Output:   buf,
-			Writer:   buf,
+			VTerm:    vterm,
 		})
 	}
 
@@ -59,7 +60,7 @@ func runSync() {
 		if err := srSync.RunWithWriterFunc(cfg, func(projName string) io.Writer {
 			for _, task := range model.Tasks {
 				if task.Label == projName {
-					return task.Writer
+					return task.VTerm
 				}
 			}
 			return os.Stdout

@@ -1,12 +1,12 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"sync"
 
+	"github.com/gdamore/tcell/v3/vt"
 	"github.com/infraflakes/sro/internal/config"
 	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/runner"
@@ -47,22 +47,23 @@ func runPar(name string) {
 	}
 
 	model := &tui.Model{
-		Type:     "par",
-		Name:     name,
-		Status:   "running",
-		Selected: 0,
+		Type:         "par",
+		Name:         name,
+		Status:       "running",
+		Selected:     0,
+		ScrollOffset: 0,
 	}
 
-	// Create a buffer per task in the par
+	// Create a vterm per task in the par
 	for _, stmt := range par.Stmts {
 		label := labelForStmt(stmt)
-		buf := &bytes.Buffer{}
+		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}))
+		vterm.Start()
 		model.Tasks = append(model.Tasks, tui.Task{
 			Label:    label,
 			Status:   "pending",
 			Expanded: false,
-			Output:   buf,
-			Writer:   buf,
+			VTerm:    vterm,
 		})
 	}
 
@@ -81,17 +82,17 @@ func runPar(name string) {
 				defer wg.Done()
 
 				model.Tasks[idx].Status = "running"
-				model.Tasks[idx].Expanded = true
+				// Don't auto-expand in par - user controls expansion
 
 				r := runner.NewWithContext(cfg, ctx)
-				r.Writer = model.Tasks[idx].Writer
+				r.Writer = model.Tasks[idx].VTerm
 
 				var err error
 				switch stmt := s.(type) {
 				case *ast.FnCall:
 					err = r.ExecuteFnCall(stmt)
 				case *ast.SeqRef:
-					err = r.RunSeqWithWriter(stmt.SeqName, model.Tasks[idx].Writer)
+					err = r.RunSeqWithWriter(stmt.SeqName, model.Tasks[idx].VTerm)
 				}
 
 				if err != nil {

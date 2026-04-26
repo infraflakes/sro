@@ -1,22 +1,21 @@
 package tui
 
 import (
-	"bytes"
-	"io"
+	"github.com/gdamore/tcell/v3/vt"
 )
 
 type Model struct {
-	Type     string // "seq", "par", "sync"
-	Name     string
-	Status   string // "running", "ok", "failed"
-	Tasks    []Task
-	Selected int // keyboard cursor position
+	Type         string // "seq", "par", "sync"
+	Name         string
+	Status       string // "running", "ok", "failed"
+	Tasks        []Task
+	Selected     int // keyboard cursor position
+	ScrollOffset int // viewport scroll offset
 }
 
 type Task struct {
 	Label    string
 	Status   string // "ok", "running", "failed", "pending"
 	Expanded bool
-	Output   *bytes.Buffer // captured output for this task
-	Writer   io.Writer     // writer for piping output
+	VTerm    vt.MockTerm // virtual terminal for this task
 }

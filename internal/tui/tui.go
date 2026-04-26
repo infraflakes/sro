@@ -33,11 +33,11 @@ func Run(model *Model) error {
 				switch ev.Key() {
 				case tcell.KeyEscape, tcell.KeyCtrlC:
 					quit = true
-				case tcell.KeyUp, tcell.KeyCtrlN:
+				case tcell.KeyUp, tcell.KeyCtrlP:
 					if model.Selected > 0 {
 						model.Selected--
 					}
-				case tcell.KeyDown, tcell.KeyCtrlP:
+				case tcell.KeyDown, tcell.KeyCtrlN:
 					if model.Selected < len(model.Tasks)-1 {
 						model.Selected++
 					}
@@ -59,6 +59,18 @@ func Run(model *Model) error {
 			}
 		case <-ticker.C:
 			spinnerIdx = (spinnerIdx + 1) % len(SpinnerFrames)
+		}
+
+		// Adjust scroll offset to keep selected task visible
+		_, h := screen.Size()
+		headerHeight := 3
+		footerHeight := 1
+		visibleHeight := h - headerHeight - footerHeight
+		if model.Selected < model.ScrollOffset {
+			model.ScrollOffset = model.Selected
+		}
+		if model.Selected >= model.ScrollOffset+visibleHeight {
+			model.ScrollOffset = model.Selected - visibleHeight + 1
 		}
 
 		// Update spinner in model status
@@ -96,6 +108,13 @@ func Run(model *Model) error {
 			} else {
 				model.Status = "ok"
 			}
+		}
+	}
+
+	// Stop all vterms on exit
+	for i := range model.Tasks {
+		if model.Tasks[i].VTerm != nil {
+			model.Tasks[i].VTerm.Stop()
 		}
 	}
 
@@ -130,11 +149,11 @@ func RunWithContext(ctx context.Context, model *Model) error {
 				switch ev.Key() {
 				case tcell.KeyEscape, tcell.KeyCtrlC:
 					quit = true
-				case tcell.KeyUp, tcell.KeyCtrlN:
+				case tcell.KeyUp, tcell.KeyCtrlP:
 					if model.Selected > 0 {
 						model.Selected--
 					}
-				case tcell.KeyDown, tcell.KeyCtrlP:
+				case tcell.KeyDown, tcell.KeyCtrlN:
 					if model.Selected < len(model.Tasks)-1 {
 						model.Selected++
 					}
@@ -156,6 +175,18 @@ func RunWithContext(ctx context.Context, model *Model) error {
 			}
 		case <-ticker.C:
 			spinnerIdx = (spinnerIdx + 1) % len(SpinnerFrames)
+		}
+
+		// Adjust scroll offset to keep selected task visible
+		_, h := screen.Size()
+		headerHeight := 3
+		footerHeight := 1
+		visibleHeight := h - headerHeight - footerHeight
+		if model.Selected < model.ScrollOffset {
+			model.ScrollOffset = model.Selected
+		}
+		if model.Selected >= model.ScrollOffset+visibleHeight {
+			model.ScrollOffset = model.Selected - visibleHeight + 1
 		}
 
 		// Update spinner in model status
@@ -193,6 +224,13 @@ func RunWithContext(ctx context.Context, model *Model) error {
 			} else {
 				model.Status = "ok"
 			}
+		}
+	}
+
+	// Stop all vterms on exit
+	for i := range model.Tasks {
+		if model.Tasks[i].VTerm != nil {
+			model.Tasks[i].VTerm.Stop()
 		}
 	}
 

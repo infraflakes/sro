@@ -2,15 +2,24 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gdamore/tcell/v3"
 	"github.com/gdamore/tcell/v3/color"
+	"github.com/gdamore/tcell/v3/vt"
 )
 
 func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	w, h := screen.Size()
 	screen.Fill(' ', tcell.StyleDefault.Background(Bg))
+
+	// Calculate header height
+	headerHeight := 3 // header + type note
+	footerHeight := 1
+	visibleHeight := h - headerHeight - footerHeight
+
+	// Calculate which tasks are visible based on ScrollOffset
+	startTask := model.ScrollOffset
+	endTask := min(startTask+visibleHeight, len(model.Tasks))
 
 	y := 0
 
@@ -22,8 +31,8 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	renderTypeNote(screen, model, w, &y)
 	y++
 
-	// Task rows
-	for i := range model.Tasks {
+	// Task rows (only visible ones)
+	for i := startTask; i < endTask; i++ {
 		renderTaskRow(screen, model, i, w, &y, spinnerIdx)
 		if model.Tasks[i].Expanded {
 			renderExpandedPanel(screen, &model.Tasks[i], w, &y)
@@ -112,6 +121,23 @@ func renderTypeNote(screen tcell.Screen, model *Model, w int, y *int) {
 
 func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int, spinnerIdx int) {
 	task := &model.Tasks[taskIdx]
+	isSelected := taskIdx == model.Selected
+
+	// Background for the entire row
+	rowBg := Bg
+	if isSelected {
+		rowBg = Bg3
+	}
+
+	// Clear the row with the appropriate background
+	for x := range w {
+		screen.SetContent(x, *y, ' ', nil, tcell.StyleDefault.Background(rowBg))
+	}
+
+	// Selection indicator
+	if isSelected {
+		screen.SetContent(0, *y, '▸', nil, tcell.StyleDefault.Foreground(TextBright).Background(rowBg))
+	}
 
 	// Status icon
 	var icon rune
@@ -134,11 +160,15 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 		iconColor = Muted
 	}
 
-	screen.SetContent(2, *y, icon, nil, tcell.StyleDefault.Foreground(iconColor).Background(Bg))
+	screen.SetContent(2, *y, icon, nil, tcell.StyleDefault.Foreground(iconColor).Background(rowBg))
 
 	// Label
+	labelColor := Text
+	if isSelected {
+		labelColor = TextBright
+	}
 	for i, r := range task.Label {
-		style := tcell.StyleDefault.Foreground(Text).Background(Bg)
+		style := tcell.StyleDefault.Foreground(labelColor).Background(rowBg)
 		screen.SetContent(4+i, *y, r, nil, style)
 	}
 
@@ -147,7 +177,7 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 	if task.Expanded {
 		arrow = '▼'
 	}
-	screen.SetContent(w-2, *y, arrow, nil, tcell.StyleDefault.Foreground(Muted).Background(Bg))
+	screen.SetContent(w-2, *y, arrow, nil, tcell.StyleDefault.Foreground(Muted).Background(rowBg))
 
 	// Vertical connector bar for seq
 	if model.Type == "seq" && taskIdx > 0 {
@@ -164,7 +194,9 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 }
 
 func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
-	panelHeight := 10 // Fixed height for now
+	_, termH := screen.Size()
+	availableHeight := termH - *y - 3 // leave room for footer and other tasks
+	panelHeight := min(10, max(3, availableHeight))
 	panelWidth := w - 4
 
 	// Top border matching task status
@@ -185,16 +217,24 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 	}
 	*y++
 
-	// Render output from buffer
-	if task.Output != nil {
-		lines := strings.Split(task.Output.String(), "\n")
-		// Show last N lines
-		startLine := max(0, len(lines)-panelHeight)
-		for i := startLine; i < len(lines) && i < startLine+panelHeight; i++ {
-			line := lines[i]
-			for j, r := range line {
-				if j < panelWidth {
-					screen.SetContent(2+j, *y, r, nil, tcell.StyleDefault.Foreground(Text).Background(Bg))
+	// Blit cells from vterm
+	if task.VTerm != nil {
+		be := task.VTerm.Backend()
+		vtSize := be.GetSize()
+
+		// Show the last panelHeight rows (auto-scroll to bottom)
+		cursorPos := task.VTerm.Pos()
+		startRow := max(int(cursorPos.Y)-panelHeight+1, 0)
+
+		for row := 0; row < panelHeight && vt.Row(startRow+row) < vtSize.Y; row++ {
+			for col := vt.Col(0); col < vtSize.X && int(col) < panelWidth; col++ {
+				cell := be.GetCell(vt.Coord{X: col, Y: vt.Row(startRow + row)})
+				if cell.C != "" {
+					style := vtStyleToTcellStyle(cell.S)
+					r := []rune(cell.C)
+					if len(r) > 0 {
+						screen.SetContent(2+int(col), *y, r[0], r[1:], style)
+					}
 				}
 			}
 			*y++
@@ -203,7 +243,7 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 		*y += panelHeight
 	}
 
-	// Bottom border with spinner if running
+	// Running indicator
 	if task.Status == "running" {
 		spinnerText := " ⠋ running"
 		for i, r := range spinnerText {
@@ -238,4 +278,38 @@ func renderFooter(screen tcell.Screen, model *Model, w, h int) {
 		style := tcell.StyleDefault.Foreground(Muted).Background(Bg1)
 		screen.SetContent(i, y, r, nil, style)
 	}
+}
+
+func vtStyleToTcellStyle(vs vt.Style) tcell.Style {
+	ts := tcell.StyleDefault.Background(Bg)
+
+	fg := vs.Fg()
+	if fg != color.Default {
+		ts = ts.Foreground(tcell.Color(fg))
+	}
+	bg := vs.Bg()
+	if bg != color.Default {
+		ts = ts.Background(tcell.Color(bg))
+	}
+
+	attrs := vs.Attr()
+	if attrs&vt.Bold != 0 {
+		ts = ts.Bold(true)
+	}
+	if attrs&vt.Italic != 0 {
+		ts = ts.Italic(true)
+	}
+	if attrs&vt.Underline != 0 {
+		ts = ts.Underline(true)
+	}
+	if attrs&vt.Dim != 0 {
+		ts = ts.Dim(true)
+	}
+	if attrs&vt.StrikeThrough != 0 {
+		ts = ts.StrikeThrough(true)
+	}
+	if attrs&vt.Reverse != 0 {
+		ts = ts.Reverse(true)
+	}
+	return ts
 }
