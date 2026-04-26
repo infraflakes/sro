@@ -20,7 +20,7 @@ func TestParseProgram(t *testing.T) {
 	}{
 		{
 			name:  "sanctuary declaration",
-			input: `sanctuary = "$HOME/dev";`,
+			input: "sanctuary = `$HOME/dev`;",
 			wantStmts: map[token.TokenType]int{
 				token.SANCTUARY: 1,
 			},
@@ -34,28 +34,28 @@ func TestParseProgram(t *testing.T) {
 		},
 		{
 			name:  "var with string",
-			input: `var port1 := "127.0.0.1:8080";`,
+			input: "var string port1 = `127.0.0.1:8080`;",
 			wantStmts: map[token.TokenType]int{
 				token.VAR: 1,
 			},
 		},
 		{
 			name:  "var with var ref",
-			input: `var port1 := "a"; var port2 := $port1;`,
+			input: "var string port1 = `a`; var string port2 = $port1;",
 			wantStmts: map[token.TokenType]int{
 				token.VAR: 2,
 			},
 		},
 		{
 			name:  "shell declaration",
-			input: `shell = "bash";`,
+			input: "shell = `bash`;",
 			wantStmts: map[token.TokenType]int{
 				token.SHELL: 1,
 			},
 		},
 		{
 			name:  "var with shell exec",
-			input: `shell = "bash"; var x := ` + "`echo hello`;",
+			input: "shell = `bash`; var shell x = `echo hello`;",
 			wantStmts: map[token.TokenType]int{
 				token.SHELL: 1,
 				token.VAR:   1,
@@ -63,7 +63,7 @@ func TestParseProgram(t *testing.T) {
 		},
 		{
 			name:  "sanctuary with var ref",
-			input: `shell = "bash"; var dir := ` + "`echo /tmp`" + `; sanctuary = $dir;`,
+			input: "shell = `bash`; var shell dir = `echo /tmp`; sanctuary = $dir;",
 			wantStmts: map[token.TokenType]int{
 				token.SHELL:     1,
 				token.VAR:       1,
@@ -124,13 +124,7 @@ func TestParseProgram(t *testing.T) {
 }
 
 func TestParseProjectDecl(t *testing.T) {
-	input := `
-pr todo {
-    url = "git@github.com:yourname/todo.git";
-    dir = "todo";
-    sync = "clone";
-    use = "./main.sro";
-}`
+	input := "\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}"
 	l := lexer.New(input)
 	p := New(l)
 	prog := p.ParseProgram()
@@ -168,14 +162,7 @@ pr todo {
 }
 
 func TestParseFnWithEnv(t *testing.T) {
-	input := `
-fn init {
-    log("a");
-    var x := "b";
-    env [KEY = "val"] {
-        log("c");
-    };
-}`
+	input := "\nfn init {\n    log(`a`);\n    var string x = `b`;\n    env [KEY = `val`] {\n        log(`c`);\n    };\n}"
 	l := lexer.New(input)
 	p := New(l)
 	prog := p.ParseProgram()
@@ -273,46 +260,7 @@ par test {
 }
 
 func TestFullFile(t *testing.T) {
-	input := `sanctuary = "$HOME/dev";
-import [ ./other_config.sro, ./example/work.sro ];
-var port1 := "127.0.0.1:8080";
-var port2 := "192.168.1.3:2425";
-var port3 := $port1;
-var idx_port := "3";
-pr todo {
-    url = "git@github.com:yourname/todo.git";
-    dir = "todo";
-    sync = "clone";
-    use = "./main.sro";
-}
-fn init {
-    log("Installing dependencies!");
-    var deps := "4";
-    log("Currently we have", $deps, "dependencies!");
-    cd("cmd");
-    env [
-          GOFLAGS = "-mod=mod",
-          CGO_ENABLED = "0",
-          DB_URL = "postgres://localhost:5432"
-        ] {
-          env [CGO_ENABLED = "1"] {
-            exec("go build .");
-          };
-          exec("go mod download");
-          exec("go generate ./...");
-        };
-    cd(".");
-    exec("go test ./...");
-    exec("staticcheck ./...");
-}
-seq init {
-    check(pr.todo);
-    init(pr.calendar-ts);
-}
-par ci {
-    build(pr.todo);
-    seq.init;
-}`
+	input := "sanctuary = `$HOME/dev`;\nimport [ ./other_config.sro, ./example/work.sro ];\nvar string port1 = `127.0.0.1:8080`;\nvar string port2 = `192.168.1.3:2425`;\nvar string port3 = $port1;\nvar string idx_port = `3`;\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}\nfn init {\n    log(`Installing dependencies!`);\n    var string deps = `4`;\n    log(`Currently we have`, $deps, `dependencies!`);\n    cd(`cmd`);\n    env [\n          GOFLAGS = `-mod=mod`,\n          CGO_ENABLED = `0`,\n          DB_URL = `postgres://localhost:5432`\n        ] {\n          env [CGO_ENABLED = `1`] {\n            exec(`go build .`);\n          };\n          exec(`go mod download`);\n          exec(`go generate ./...`);\n        };\n    cd(`.`);\n    exec(`go test ./...`);\n    exec(`staticcheck ./...`);\n}\nseq init {\n    check(pr.todo);\n    init(pr.calendar-ts);\n}\npar ci {\n    build(pr.todo);\n    seq.init;\n}"
 	l := lexer.New(input)
 	p := New(l)
 	prog := p.ParseProgram()
@@ -359,7 +307,7 @@ par ci {
 	// Spot-check some nodes:
 	// - Sanctuary value
 	san, _ := prog.Statements[0].(*ast.SanctuaryDecl)
-	if sl, ok := san.Value.(*ast.StringLit); !ok || sl.Value != "$HOME/dev" {
+	if bl, ok := san.Value.(*ast.BacktickLit); !ok || bl.Value != "$HOME/dev" {
 		t.Fatalf("sanctuary value wrong")
 	}
 	// - Import paths
@@ -389,11 +337,11 @@ func TestErrorCases(t *testing.T) {
 		input       string
 		wantErrSubj string
 	}{
-		{`sanctuary = "$HOME"`, "expected ;"}, // missing semicolon
-		{`pr x {`, "missing closing brace"},
-		{`fn bad { unknown }`, "unexpected token"},
-		{`pr x { url = "x"; unknown = "y";`, "invalid project field key"},
-		{`seq s { par.x; }`, "par blocks cannot be referenced"},
+		{"sanctuary = `$HOME`", "expected ;"}, // missing semicolon
+		{"pr x {", "missing closing brace"},
+		{"fn bad { unknown }", "unexpected token"},
+		{"pr x { url = `x`; unknown = `y`;", "invalid project field key"},
+		{"seq s { par.x; }", "par blocks cannot be referenced"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

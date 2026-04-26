@@ -113,10 +113,8 @@ func validateExpr(expr ast.Expr, localVars map[string]bool, fnName string, stmtI
 		if !localVars[e.Name] {
 			return fmt.Errorf("function %q stmt %d: undefined variable $%s", fnName, stmtIndex, e.Name)
 		}
-	case *ast.StringLit:
+	case *ast.BacktickLit:
 		// Always valid
-	case *ast.ShellExec:
-		// Always valid (shell execution is resolved at merge time)
 	}
 	return nil
 }

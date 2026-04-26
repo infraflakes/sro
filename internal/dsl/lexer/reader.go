@@ -29,35 +29,7 @@ func (l *Lexer) peek() byte {
 	return l.input[l.readPos]
 }
 
-func (l *Lexer) readString() token.Token {
-	line := l.line
-	col := l.col
-	l.readChar() // consume opening quote
-
-	var lit strings.Builder
-	for l.ch != '"' && l.ch != 0 {
-		lit.WriteByte(l.ch)
-		l.readChar()
-	}
-
-	if l.ch != '"' {
-		return token.Token{
-			Type:    token.ILLEGAL,
-			Literal: "unterminated string",
-			Line:    line,
-			Col:     col,
-		}
-	}
-
-	return token.Token{
-		Type:    token.STRING_LIT,
-		Literal: lit.String(),
-		Line:    line,
-		Col:     col,
-	}
-}
-
-func (l *Lexer) readShellString() token.Token {
+func (l *Lexer) readBacktick() token.Token {
 	line := l.line
 	col := l.col
 	l.readChar() // consume opening `
@@ -71,14 +43,14 @@ func (l *Lexer) readShellString() token.Token {
 	if l.ch != '`' {
 		return token.Token{
 			Type:    token.ILLEGAL,
-			Literal: "unterminated shell string",
+			Literal: "unterminated backtick string",
 			Line:    line,
 			Col:     col,
 		}
 	}
 
 	return token.Token{
-		Type:    token.SHELL_LIT,
+		Type:    token.BACKTICK,
 		Literal: lit.String(),
 		Line:    line,
 		Col:     col,

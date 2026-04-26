@@ -86,22 +86,10 @@ func (l *Lexer) NextToken() token.Token {
 	case '=':
 		tok = l.makeToken(token.ASSIGN)
 	case ':':
-		if l.peek() == '=' {
-			l.readChar()
-			l.readChar()
-			tok.Type = token.DECLARE
-			tok.Literal = ":="
-			tok.Line = l.line
-			tok.Col = l.col - 2
-			return tok
-		} else {
-			tok = l.makeToken(token.ILLEGAL)
-			tok.Literal = "unexpected character: :"
-		}
-	case '"':
-		tok = l.readString()
+		tok = l.makeToken(token.ILLEGAL)
+		tok.Literal = "unexpected character: :"
 	case '`':
-		tok = l.readShellString()
+		tok = l.readBacktick()
 	default:
 		if unicode.IsLetter(rune(l.ch)) || l.ch == '_' {
 			tok = l.readIdent()

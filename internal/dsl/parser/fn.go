@@ -109,8 +109,8 @@ func (p *Parser) parseArgList() []ast.Expr {
 	}
 	for {
 		switch p.curToken.Type {
-		case token.STRING_LIT:
-			args = append(args, &ast.StringLit{Token: p.curToken, Value: p.curToken.Literal})
+		case token.BACKTICK:
+			args = append(args, &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal})
 		case token.DOLLAR:
 			p.nextToken()
 			if p.curToken.Type != token.IDENT {
@@ -145,7 +145,7 @@ func (p *Parser) parseCdStmt() ast.FnStmt {
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
-	if !p.expectPeek(token.STRING_LIT) {
+	if !p.expectPeek(token.BACKTICK) {
 		return nil
 	}
 	arg := p.curToken.Literal
@@ -178,8 +178,8 @@ func (p *Parser) parseEnvBlock() ast.FnStmt {
 		p.nextToken() // advance past =
 		var value ast.Expr
 		switch p.curToken.Type {
-		case token.STRING_LIT:
-			value = &ast.StringLit{Token: p.curToken, Value: p.curToken.Literal}
+		case token.BACKTICK:
+			value = &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal}
 		case token.DOLLAR:
 			p.nextToken()
 			if p.curToken.Type != token.IDENT {

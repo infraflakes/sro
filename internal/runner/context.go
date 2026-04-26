@@ -38,7 +38,7 @@ func (ctx *execContext) resolveArgs(args []ast.Expr) ([]string, error) {
 	result := make([]string, 0, len(args))
 	for _, arg := range args {
 		switch a := arg.(type) {
-		case *ast.StringLit:
+		case *ast.BacktickLit:
 			result = append(result, a.Value)
 		case *ast.VarRef:
 			val, ok := ctx.vars[a.Name]

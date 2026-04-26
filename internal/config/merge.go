@@ -31,7 +31,7 @@ func merge(programs []*ast.Program) (*Config, error) {
 					return nil, fmt.Errorf("duplicate sanctuary declaration")
 				}
 				switch v := s.Value.(type) {
-				case *ast.StringLit:
+				case *ast.BacktickLit:
 					cfg.Sanctuary = v.Value
 				case *ast.VarRef:
 					resolved, ok := cfg.Vars[v.Name]
@@ -47,24 +47,26 @@ func merge(programs []*ast.Program) (*Config, error) {
 					return nil, fmt.Errorf("duplicate variable: %s", name)
 				}
 				switch v := s.Value.(type) {
-				case *ast.StringLit:
-					cfg.Vars[name] = v.Value
+				case *ast.BacktickLit:
+					if s.VarType == "shell" {
+						if cfg.Shell == "" {
+							return nil, fmt.Errorf("shell must be declared before using shell variables")
+						}
+						cmd := exec.Command(cfg.Shell, "-c", v.Value)
+						out, err := cmd.Output()
+						if err != nil {
+							return nil, fmt.Errorf("shell execution failed for var %s: %w", name, err)
+						}
+						cfg.Vars[name] = strings.TrimRight(string(out), "\n")
+					} else {
+						cfg.Vars[name] = v.Value
+					}
 				case *ast.VarRef:
 					resolved, ok := cfg.Vars[v.Name]
 					if !ok {
 						return nil, fmt.Errorf("undefined variable: $%s", v.Name)
 					}
 					cfg.Vars[name] = resolved
-				case *ast.ShellExec:
-					if cfg.Shell == "" {
-						return nil, fmt.Errorf("shell must be declared before using shell execution ('...')")
-					}
-					cmd := exec.Command(cfg.Shell, "-c", v.Command)
-					out, err := cmd.Output()
-					if err != nil {
-						return nil, fmt.Errorf("shell execution failed for var %s: %w", name, err)
-					}
-					cfg.Vars[name] = strings.TrimRight(string(out), "\n")
 				}
 
 			case *ast.ProjectDecl:

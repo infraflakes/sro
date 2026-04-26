@@ -90,23 +90,25 @@ func (ctx *execContext) execCd(s *ast.CdStmt) error {
 
 func (ctx *execContext) execVarDecl(s *ast.VarDecl) error {
 	switch v := s.Value.(type) {
-	case *ast.StringLit:
-		ctx.vars[s.Name] = v.Value
+	case *ast.BacktickLit:
+		if s.VarType == "shell" {
+			cmd := exec.Command(ctx.cfg.Shell, "-c", v.Value)
+			cmd.Dir = ctx.workDir
+			cmd.Env = ctx.buildEnv()
+			out, err := cmd.Output()
+			if err != nil {
+				return fmt.Errorf("shell execution failed for var %s: %w", s.Name, err)
+			}
+			ctx.vars[s.Name] = strings.TrimRight(string(out), "\n")
+		} else {
+			ctx.vars[s.Name] = v.Value
+		}
 	case *ast.VarRef:
 		val, ok := ctx.vars[v.Name]
 		if !ok {
 			return fmt.Errorf("undefined variable: $%s", v.Name)
 		}
 		ctx.vars[s.Name] = val
-	case *ast.ShellExec:
-		cmd := exec.Command(ctx.cfg.Shell, "-c", v.Command)
-		cmd.Dir = ctx.workDir
-		cmd.Env = ctx.buildEnv()
-		out, err := cmd.Output()
-		if err != nil {
-			return fmt.Errorf("shell execution failed for var %s: %w", s.Name, err)
-		}
-		ctx.vars[s.Name] = strings.TrimRight(string(out), "\n")
 	default:
 		return fmt.Errorf("unexpected value type: %T", v)
 	}
@@ -117,7 +119,7 @@ func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 	layer := make(map[string]string, len(s.Pairs))
 	for _, p := range s.Pairs {
 		switch v := p.Value.(type) {
-		case *ast.StringLit:
+		case *ast.BacktickLit:
 			layer[p.Key] = v.Value
 		case *ast.VarRef:
 			val, ok := ctx.vars[v.Name]

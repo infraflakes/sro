@@ -2,21 +2,21 @@
 # By default sro picks up config at ~/.config/sro/config.sro, use `--config` or `-c` to override.
 # Use `sro validate` to check config validity
 # Set your ultimate work directory! (no relative path)
-shell = "bash"; # first class primitive
-var workdir := 'echo $HOME/dev'; # ' for shell, will return values, so you can do arithmetics here
+shell = `bash`; # first class primitive
+var shell workdir = `echo $HOME/dev`; # shell type will execute and return values
 sanctuary = $workdir;  # recommended
 
 # import other files, only support relative path
 # fail on circular import
 import [
-  ./other_config.sro,
-  ./example/work.sro
+  ./test/other_config.sro,
+  ./test/example/work.sro
 ];
 
-var port1 := "127.0.0.1:8080";
-var port2 := "192.168.1.3:2425";
-var port3 := $port1;
-var idx_port := "3";
+var string port1 = `127.0.0.1:8080`;
+var string port2 = `192.168.1.3:2425`;
+var string port3 = $port1;
+var string idx_port = `3`;
 
 ## project declaration
 # `sro sync` will clone these repos in relative path to sanctuary
@@ -24,16 +24,16 @@ var idx_port := "3";
 # Having git repo inside sanctuary that doesnt belong to the list below shows warning in `sro sync` whether user wants to remove it
 
 pr todo {
-    url = "git@github.com:yourname/todo.git";  # projects can clone similar repos
-    dir = "todo";  # will git clone at ~/dev/todo, dir across projects cannot be the same
-    sync = "clone"; # ← default behavior, clone only if not exist, ignore if does
-    # sync = "ignore";   ← skip clone
+    url = `git@github.com:yourname/todo.git`;  # projects can clone similar repos
+    dir = `todo`;  # will git clone at ~/dev/todo, dir across projects cannot be the same
+    sync = `clone`; # ← default behavior, clone only if not exist, ignore if does
+    # sync = `ignore`;   ← skip clone
 
     # `use` is for importing sro files which depends on the exitence of correlated project
     # without `use`, using the global `import{}` may fail at parse time.
     # Path for `use` MUST be relative path
-    use = "./main.sro"; # base on project's directory, only use if repo has custom config inside.
-    # use = "./.sro/main.sro";
+    use = `./main.sro`; # base on project's directory, only use if repo has custom config inside.
+    # use = `./.sro/main.sro`;
 }
 
 ## functions
@@ -42,24 +42,24 @@ pr todo {
 # scope: all primitives are block-scoped, no leakage
 
 fn init {
-    log("Installing dependencies! For project at: ", $workdir, "!!");
-    var deps := "4";
-    log("Currently we have", $deps, "dependencies!");
-    cd("cmd"); # cd to pr.dir + cd() value
+    log(`Installing dependencies! For project at: `, $workdir, `!!`);
+    var string deps = `4`;
+    log(`Currently we have`, $deps, `dependencies!`);
+    cd(`cmd`); # cd to pr.dir + cd() value
     env [ # scoped env block with no env leakage
-          GOFLAGS = "-mod=mod",
-          CGO_ENABLED = "0",
-          DB_URL = "postgres://localhost:5432"
+          GOFLAGS = `-mod=mod`,
+          CGO_ENABLED = `0`,
+          DB_URL = `postgres://localhost:5432`
         ] {
-          env [CGO_ENABLED = "1"] { # same env will override
-            exec("go build .");
+          env [CGO_ENABLED = `1`] { # same env will override
+            exec(`go build .`);
           };
-          exec("go mod download");
-          exec("go generate ./...");
+          exec(`go mod download`);
+          exec(`go generate ./...`);
         };
-    cd(".");
-    exec("go test ./...");
-    exec("staticcheck ./...");
+    cd(`.`);
+    exec(`go test ./...`);
+    exec(`staticcheck ./...`);
 }
 
 ## seq - run functions sequentially

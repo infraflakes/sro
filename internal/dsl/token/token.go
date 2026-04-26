@@ -13,14 +13,12 @@ const (
 	EOF     TokenType = "EOF"
 	ILLEGAL TokenType = "ILLEGAL"
 
-	IDENT      TokenType = "IDENT"
-	STRING_LIT TokenType = "STRING"
-	PATH_LIT   TokenType = "PATH"
-	SHELL_LIT  TokenType = "SHELL_LIT"
+	IDENT     TokenType = "IDENT"
+	BACKTICK  TokenType = "BACKTICK"
+	PATH_LIT  TokenType = "PATH"
 
-	ASSIGN    TokenType = "="
-	DECLARE   TokenType = ":="
-	LBRACE    TokenType = "{"
+	ASSIGN   TokenType = "="
+	LBRACE   TokenType = "{"
 	RBRACE    TokenType = "}"
 	LBRACKET  TokenType = "["
 	RBRACKET  TokenType = "]"
@@ -34,6 +32,7 @@ const (
 	SANCTUARY TokenType = "SANCTUARY"
 	IMPORT    TokenType = "IMPORT"
 	VAR       TokenType = "VAR"
+	STRING_KW TokenType = "STRING_KW"
 	PR        TokenType = "PR"
 	FN        TokenType = "FN"
 	SEQ       TokenType = "SEQ"
@@ -49,6 +48,7 @@ var keywords = map[string]TokenType{
 	"sanctuary": SANCTUARY,
 	"import":    IMPORT,
 	"var":       VAR,
+	"string":    STRING_KW,
 	"pr":        PR,
 	"fn":        FN,
 	"seq":       SEQ,

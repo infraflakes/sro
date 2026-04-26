@@ -31,9 +31,10 @@ func (id *ImportDecl) Pos() (int, int)      { return id.Token.Line, id.Token.Col
 func (id *ImportDecl) stmtNode()            {}
 
 type VarDecl struct {
-	Token token.Token
-	Name  string
-	Value Expr
+	Token   token.Token
+	VarType string // "string" or "shell"
+	Name    string
+	Value   Expr
 }
 
 func (vd *VarDecl) TokenLiteral() string { return vd.Token.Literal }

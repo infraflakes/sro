@@ -13,7 +13,6 @@ func TestNextToken(t *testing.T) {
 	}{
 		// Single tokens
 		{"=", []token.Token{{Type: token.ASSIGN, Literal: "="}}},
-		{":=", []token.Token{{Type: token.DECLARE, Literal: ":="}}},
 		{"{", []token.Token{{Type: token.LBRACE, Literal: "{"}}},
 		{"}", []token.Token{{Type: token.RBRACE, Literal: "}"}}},
 		{"[", []token.Token{{Type: token.LBRACKET, Literal: "["}}},
@@ -29,6 +28,7 @@ func TestNextToken(t *testing.T) {
 		{"sanctuary", []token.Token{{Type: token.SANCTUARY, Literal: "sanctuary"}}},
 		{"import", []token.Token{{Type: token.IMPORT, Literal: "import"}}},
 		{"var", []token.Token{{Type: token.VAR, Literal: "var"}}},
+		{"string", []token.Token{{Type: token.STRING_KW, Literal: "string"}}},
 		{"pr", []token.Token{{Type: token.PR, Literal: "pr"}}},
 		{"fn", []token.Token{{Type: token.FN, Literal: "fn"}}},
 		{"seq", []token.Token{{Type: token.SEQ, Literal: "seq"}}},
@@ -46,13 +46,9 @@ func TestNextToken(t *testing.T) {
 		{"idx_port", []token.Token{{Type: token.IDENT, Literal: "idx_port"}}},
 		{"url", []token.Token{{Type: token.IDENT, Literal: "url"}}}, // not a keyword
 
-		// String literals
-		{`"hello"`, []token.Token{{Type: token.STRING_LIT, Literal: "hello"}}},
-		{`""`, []token.Token{{Type: token.STRING_LIT, Literal: ""}}},
-
-		// Shell literals (backticks)
-		{"`echo hello`", []token.Token{{Type: token.SHELL_LIT, Literal: "echo hello"}}},
-		{"``", []token.Token{{Type: token.SHELL_LIT, Literal: ""}}},
+		// Backtick literals
+		{"`echo hello`", []token.Token{{Type: token.BACKTICK, Literal: "echo hello"}}},
+		{"``", []token.Token{{Type: token.BACKTICK, Literal: ""}}},
 
 		// Path literals
 		{"./other_config.sro", []token.Token{{Type: token.PATH_LIT, Literal: "./other_config.sro"}}},
@@ -88,8 +84,7 @@ func TestNextToken(t *testing.T) {
 }
 
 func TestLexerLineCol(t *testing.T) {
-	input := `var x := "hello";
-var y := "world";`
+	input := "var string x = `hello`;\nvar string y = `world`;"
 	l := New(input)
 	tokens := []token.Token{}
 	for {
@@ -119,8 +114,7 @@ var y := "world";`
 }
 
 func TestComments(t *testing.T) {
-	input := `var x := "test"; # comment
-var y := "next";`
+	input := "var string x = `test`; # comment\nvar string y = `next`;"
 	l := New(input)
 	tokens := []token.Token{}
 	for {
@@ -131,8 +125,8 @@ var y := "next";`
 		tokens = append(tokens, tok)
 	}
 
-	// Should have 10 tokens: VAR, IDENT, DECLARE, STRING_LIT, SEMICOLON, VAR, IDENT, DECLARE, STRING_LIT, SEMICOLON
-	expectedTypes := []token.TokenType{token.VAR, token.IDENT, token.DECLARE, token.STRING_LIT, token.SEMICOLON, token.VAR, token.IDENT, token.DECLARE, token.STRING_LIT, token.SEMICOLON}
+	// Should have 12 tokens: VAR, STRING_KW, IDENT, ASSIGN, BACKTICK, SEMICOLON, VAR, STRING_KW, IDENT, ASSIGN, BACKTICK, SEMICOLON
+	expectedTypes := []token.TokenType{token.VAR, token.STRING_KW, token.IDENT, token.ASSIGN, token.BACKTICK, token.SEMICOLON, token.VAR, token.STRING_KW, token.IDENT, token.ASSIGN, token.BACKTICK, token.SEMICOLON}
 	if len(tokens) != len(expectedTypes) {
 		t.Fatalf("token count mismatch: got %d, want %d", len(tokens), len(expectedTypes))
 	}
@@ -148,11 +142,9 @@ func TestErrorCases(t *testing.T) {
 		input  string
 		errMsg string
 	}{
-		{`"unterminated`, "unterminated string"},
 		{"bare:", "unexpected character: :"},
-		{`"test`, "unterminated string"},
 		{"@", "unexpected character: @"},
-		{"`unterminated", "unterminated shell string"},
+		{"`unterminated", "unterminated backtick string"},
 	}
 
 	for _, tt := range tests {
@@ -177,17 +169,7 @@ func TestErrorCases(t *testing.T) {
 }
 
 func TestFullSnippet(t *testing.T) {
-	input := `sanctuary = "$HOME/dev";
-import [ ./a.sro, ./b.sro ];
-var port1 := "127.0.0.1:8080";
-pr hello {
-    url = "git@github.com:foo/bar.git";
-    dir = "bar";
-}
-fn init {
-    log("starting");
-    exec("go build");
-}`
+	input := "sanctuary = `$HOME/dev`;\nimport [ ./a.sro, ./b.sro ];\nvar string port1 = `127.0.0.1:8080`;\npr hello {\n    url = `git@github.com:foo/bar.git`;\n    dir = `bar`;\n}\nfn init {\n    log(`starting`);\n    exec(`go build`);\n}"
 	l := New(input)
 	tokens := []token.Token{}
 	for {

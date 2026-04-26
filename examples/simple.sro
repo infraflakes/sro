@@ -1,21 +1,21 @@
-shell = "bash";
-var workdir := `echo $HOME/dev`;
+shell = `bash`;
+var shell workdir = `echo $HOME/dev`;
 sanctuary = $workdir;
 
 pr sro {
-    url = "git@github.com:infraflakes/sro.git";
-    dir = "sro";
-    sync = "ignore";
+    url = `git@github.com:infraflakes/sro.git`;
+    dir = `sro`;
+    sync = `ignore`;
 }
 
 fn check {
-    log("checking project...");
-    exec("echo done");
+    log(`checking project...`);
+    exec(`echo done`);
 }
 
 fn build {
-    log("building...");
-    exec("echo build complete");
+    log(`building...`);
+    exec(`echo build complete`);
 }
 
 seq pipeline {

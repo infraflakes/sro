@@ -1,28 +1,28 @@
 fn init {
-  exec("go get -u");
-  exec("go mod tidy");
+  exec(`go get -u`);
+  exec(`go mod tidy`);
 }
 
 fn build {
-  log("Building sro CLI!");
-  exec("go mod tidy");
-  var version := `git describe --tags --always --dirty --first-parent 2>/dev/null || echo "dev"`;
-  env[CGO_ENABLED = "0"] {
-      exec("go build -ldflags='-s -w -X main.version=",$version,"' -o bin/sro .");
+  log(`Building sro CLI!`);
+  exec(`go mod tidy`);
+  var shell version = `git describe --tags --always --dirty --first-parent 2>/dev/null || echo "dev"`;
+  env[CGO_ENABLED = `0`] {
+      exec(`go build -ldflags='-s -w -X main.version=`,$version,`' -o bin/sro .`);
   };
 }
 
 fn check {
-  log("Formating and linting the codebase!");
-  exec("go fmt ./...");
-  exec("go fix ./...");
-  exec("go vet ./...");
-  exec("golangci-lint run");
+  log(`Formating and linting the codebase!`);
+  exec(`go fmt ./...`);
+  exec(`go fix ./...`);
+  exec(`go vet ./...`);
+  exec(`golangci-lint run`);
 }
 
 fn test {
-  log("Examine unit tests...");
-  exec("go test ./... -v");
+  log(`Examine unit tests...`);
+  exec(`go test ./... -v`);
 }
 
 seq start {

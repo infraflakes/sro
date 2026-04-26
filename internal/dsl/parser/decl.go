@@ -12,7 +12,7 @@ func (p *Parser) parseShellDecl() ast.Stmt {
 	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
-	if !p.expectPeek(token.STRING_LIT) {
+	if !p.expectPeek(token.BACKTICK) {
 		return nil
 	}
 	value := p.curToken.Literal
@@ -33,8 +33,8 @@ func (p *Parser) parseSanctuaryDecl() ast.Stmt {
 	p.nextToken() // move to value
 	var value ast.Expr
 	switch p.curToken.Type {
-	case token.STRING_LIT:
-		value = &ast.StringLit{Token: p.curToken, Value: p.curToken.Literal}
+	case token.BACKTICK:
+		value = &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal}
 	case token.DOLLAR:
 		p.nextToken()
 		if p.curToken.Type != token.IDENT {
@@ -84,40 +84,49 @@ func (p *Parser) parseImportDecl() ast.Stmt {
 }
 
 func (p *Parser) parseVarDecl() *ast.VarDecl {
-	tok := p.curToken
+	tok := p.curToken // VAR
+
+	// Expect type annotation: string or shell
+	if !p.peekTokenIs(token.STRING_KW) && !p.peekTokenIs(token.SHELL) {
+		p.errors = append(p.errors, fmt.Sprintf("expected 'string' or 'shell' after var at %d:%d", p.peekToken.Line, p.peekToken.Col))
+		return nil
+	}
+	p.nextToken()
+	varType := p.curToken.Literal // "string" or "shell"
+
+	// Expect variable name
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}
 	name := p.curToken.Literal
-	if !p.expectPeek(token.DECLARE) {
+
+	// Expect =
+	if !p.expectPeek(token.ASSIGN) {
 		return nil
 	}
-	p.nextToken() // move to value (STRING or DOLLAR)
+
+	// Expect value
+	p.nextToken()
 	var value ast.Expr
 	switch p.curToken.Type {
-	case token.STRING_LIT:
-		value = &ast.StringLit{Token: p.curToken, Value: p.curToken.Literal}
+	case token.BACKTICK:
+		value = &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal}
 	case token.DOLLAR:
-		p.nextToken() // consume $
+		p.nextToken()
 		if p.curToken.Type != token.IDENT {
 			p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
 			return nil
 		}
 		value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
-	case token.SHELL_LIT:
-		value = &ast.ShellExec{Token: p.curToken, Command: p.curToken.Literal}
 	default:
-		p.errors = append(p.errors, fmt.Sprintf("expected string or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
+		p.errors = append(p.errors, fmt.Sprintf("expected backtick literal or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
+
 	if !p.expectPeek(token.SEMICOLON) {
 		return nil
 	}
-	return &ast.VarDecl{
-		Token: tok,
-		Name:  name,
-		Value: value,
-	}
+	return &ast.VarDecl{Token: tok, VarType: varType, Name: name, Value: value}
 }
 
 func (p *Parser) parseProjectDecl() ast.Stmt {
@@ -146,7 +155,7 @@ func (p *Parser) parseProjectDecl() ast.Stmt {
 		if !p.expectPeek(token.ASSIGN) {
 			return nil
 		}
-		if !p.expectPeek(token.STRING_LIT) {
+		if !p.expectPeek(token.BACKTICK) {
 			return nil
 		}
 		value := p.curToken.Literal
