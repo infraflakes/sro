@@ -8,6 +8,23 @@ import (
 	"github.com/infraflakes/sro/internal/dsl/ast"
 )
 
+// resolveBacktickLit resolves interpolation in a BacktickLit using the provided vars map.
+func resolveBacktickLit(lit *ast.BacktickLit, vars map[string]string) (string, error) {
+	var sb strings.Builder
+	for _, part := range lit.Parts {
+		if part.IsVar {
+			val, ok := vars[part.Value]
+			if !ok {
+				return "", fmt.Errorf("undefined variable: ${%s}", part.Value)
+			}
+			sb.WriteString(val)
+		} else {
+			sb.WriteString(part.Value)
+		}
+	}
+	return sb.String(), nil
+}
+
 func merge(programs []*ast.Program) (*Config, error) {
 	cfg := &Config{
 		Projects:  make(map[string]*Project),
@@ -32,7 +49,11 @@ func merge(programs []*ast.Program) (*Config, error) {
 				}
 				switch v := s.Value.(type) {
 				case *ast.BacktickLit:
-					cfg.Sanctuary = v.Value
+					resolved, err := resolveBacktickLit(v, cfg.Vars)
+					if err != nil {
+						return nil, err
+					}
+					cfg.Sanctuary = resolved
 				case *ast.VarRef:
 					resolved, ok := cfg.Vars[v.Name]
 					if !ok {
@@ -48,18 +69,22 @@ func merge(programs []*ast.Program) (*Config, error) {
 				}
 				switch v := s.Value.(type) {
 				case *ast.BacktickLit:
+					resolved, err := resolveBacktickLit(v, cfg.Vars)
+					if err != nil {
+						return nil, err
+					}
 					if s.VarType == "shell" {
 						if cfg.Shell == "" {
 							return nil, fmt.Errorf("shell must be declared before using shell variables")
 						}
-						cmd := exec.Command(cfg.Shell, "-c", v.Value)
+						cmd := exec.Command(cfg.Shell, "-c", resolved)
 						out, err := cmd.Output()
 						if err != nil {
 							return nil, fmt.Errorf("shell execution failed for var %s: %w", name, err)
 						}
 						cfg.Vars[name] = strings.TrimRight(string(out), "\n")
 					} else {
-						cfg.Vars[name] = v.Value
+						cfg.Vars[name] = resolved
 					}
 				case *ast.VarRef:
 					resolved, ok := cfg.Vars[v.Name]
@@ -75,15 +100,30 @@ func merge(programs []*ast.Program) (*Config, error) {
 				}
 				proj := &Project{Name: s.Name, Sync: "clone"} // default
 				for _, f := range s.Fields {
+					var resolved string
+					switch v := f.Value.(type) {
+					case *ast.BacktickLit:
+						var err error
+						resolved, err = resolveBacktickLit(v, cfg.Vars)
+						if err != nil {
+							return nil, err
+						}
+					case *ast.VarRef:
+						var ok bool
+						resolved, ok = cfg.Vars[v.Name]
+						if !ok {
+							return nil, fmt.Errorf("undefined variable: $%s", v.Name)
+						}
+					}
 					switch f.Key {
 					case "url":
-						proj.URL = f.Value
+						proj.URL = resolved
 					case "dir":
-						proj.Dir = f.Value
+						proj.Dir = resolved
 					case "sync":
-						proj.Sync = f.Value
+						proj.Sync = resolved
 					case "use":
-						proj.Use = f.Value
+						proj.Use = resolved
 					}
 				}
 				cfg.Projects[s.Name] = proj

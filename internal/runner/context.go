@@ -34,24 +34,33 @@ func newExecContext(cfg *config.Config, proj *config.Project) *execContext {
 	}
 }
 
-func (ctx *execContext) resolveArgs(args []ast.Expr) ([]string, error) {
-	result := make([]string, 0, len(args))
-	for _, arg := range args {
-		switch a := arg.(type) {
-		case *ast.BacktickLit:
-			result = append(result, a.Value)
-		case *ast.VarRef:
-			val, ok := ctx.vars[a.Name]
-			if !ok {
-				line, col := a.Pos()
-				return nil, fmt.Errorf("%d:%d: undefined variable $%s", line, col, a.Name)
+func (ctx *execContext) resolveExpr(expr ast.Expr) (string, error) {
+	switch e := expr.(type) {
+	case *ast.BacktickLit:
+		var sb strings.Builder
+		for _, part := range e.Parts {
+			if part.IsVar {
+				val, ok := ctx.vars[part.Value]
+				if !ok {
+					line, col := e.Pos()
+					return "", fmt.Errorf("%d:%d: undefined variable ${%s}", line, col, part.Value)
+				}
+				sb.WriteString(val)
+			} else {
+				sb.WriteString(part.Value)
 			}
-			result = append(result, val)
-		default:
-			return nil, fmt.Errorf("unexpected expression type: %T", arg)
 		}
+		return sb.String(), nil
+	case *ast.VarRef:
+		val, ok := ctx.vars[e.Name]
+		if !ok {
+			line, col := e.Pos()
+			return "", fmt.Errorf("%d:%d: undefined variable $%s", line, col, e.Name)
+		}
+		return val, nil
+	default:
+		return "", fmt.Errorf("unexpected expression type: %T", expr)
 	}
-	return result, nil
 }
 
 func (ctx *execContext) buildEnv() []string {

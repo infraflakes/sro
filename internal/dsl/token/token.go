@@ -13,12 +13,12 @@ const (
 	EOF     TokenType = "EOF"
 	ILLEGAL TokenType = "ILLEGAL"
 
-	IDENT     TokenType = "IDENT"
-	BACKTICK  TokenType = "BACKTICK"
-	PATH_LIT  TokenType = "PATH"
+	IDENT    TokenType = "IDENT"
+	BACKTICK TokenType = "BACKTICK"
+	PATH_LIT TokenType = "PATH"
 
-	ASSIGN   TokenType = "="
-	LBRACE   TokenType = "{"
+	ASSIGN    TokenType = "="
+	LBRACE    TokenType = "{"
 	RBRACE    TokenType = "}"
 	LBRACKET  TokenType = "["
 	RBRACKET  TokenType = "]"

@@ -54,7 +54,7 @@ func (pd *ProjectDecl) stmtNode()            {}
 
 type ProjectField struct {
 	Key   string
-	Value string
+	Value Expr
 }
 
 type FnDecl struct {

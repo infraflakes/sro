@@ -43,20 +43,19 @@ func (ctx *execContext) execFnBody(body []ast.FnStmt) error {
 }
 
 func (ctx *execContext) execLog(s *ast.LogStmt) error {
-	args, err := ctx.resolveArgs(s.Args)
+	msg, err := ctx.resolveExpr(s.Value)
 	if err != nil {
 		return err
 	}
-	fmt.Println(strings.Join(args, ""))
+	fmt.Println(msg)
 	return nil
 }
 
 func (ctx *execContext) execExec(s *ast.ExecStmt) error {
-	args, err := ctx.resolveArgs(s.Args)
+	cmdStr, err := ctx.resolveExpr(s.Value)
 	if err != nil {
 		return err
 	}
-	cmdStr := strings.Join(args, "")
 	fmt.Printf("  exec  %s\n", cmdStr)
 
 	cmd := exec.Command(ctx.cfg.Shell, "-c", cmdStr)
@@ -89,28 +88,21 @@ func (ctx *execContext) execCd(s *ast.CdStmt) error {
 }
 
 func (ctx *execContext) execVarDecl(s *ast.VarDecl) error {
-	switch v := s.Value.(type) {
-	case *ast.BacktickLit:
-		if s.VarType == "shell" {
-			cmd := exec.Command(ctx.cfg.Shell, "-c", v.Value)
-			cmd.Dir = ctx.workDir
-			cmd.Env = ctx.buildEnv()
-			out, err := cmd.Output()
-			if err != nil {
-				return fmt.Errorf("shell execution failed for var %s: %w", s.Name, err)
-			}
-			ctx.vars[s.Name] = strings.TrimRight(string(out), "\n")
-		} else {
-			ctx.vars[s.Name] = v.Value
+	val, err := ctx.resolveExpr(s.Value)
+	if err != nil {
+		return err
+	}
+	if s.VarType == "shell" {
+		cmd := exec.Command(ctx.cfg.Shell, "-c", val)
+		cmd.Dir = ctx.workDir
+		cmd.Env = ctx.buildEnv()
+		out, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("shell execution failed for var %s: %w", s.Name, err)
 		}
-	case *ast.VarRef:
-		val, ok := ctx.vars[v.Name]
-		if !ok {
-			return fmt.Errorf("undefined variable: $%s", v.Name)
-		}
+		ctx.vars[s.Name] = strings.TrimRight(string(out), "\n")
+	} else {
 		ctx.vars[s.Name] = val
-	default:
-		return fmt.Errorf("unexpected value type: %T", v)
 	}
 	return nil
 }
@@ -118,16 +110,11 @@ func (ctx *execContext) execVarDecl(s *ast.VarDecl) error {
 func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 	layer := make(map[string]string, len(s.Pairs))
 	for _, p := range s.Pairs {
-		switch v := p.Value.(type) {
-		case *ast.BacktickLit:
-			layer[p.Key] = v.Value
-		case *ast.VarRef:
-			val, ok := ctx.vars[v.Name]
-			if !ok {
-				return fmt.Errorf("undefined variable: $%s", v.Name)
-			}
-			layer[p.Key] = val
+		val, err := ctx.resolveExpr(p.Value)
+		if err != nil {
+			return err
 		}
+		layer[p.Key] = val
 	}
 	ctx.envStack = append(ctx.envStack, layer)
 
