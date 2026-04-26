@@ -24,17 +24,22 @@ fn test {
   exec("go test ./... -v");
 }
 
-seq kickstart {
+seq start {
   init(pr.sro);
   build(pr.sro);
 }
 
-seq quality {
+seq build {
+  build(pr.sro);
+}
+
+seq test {
+  init(pr.sro);
   check(pr.sro);
   test(pr.sro);
 }
 
-par pipeline {
-  seq.kickstart;
-  seq.quality;
+par all {
+  build(pr.sro);
+  seq.test;
 }
