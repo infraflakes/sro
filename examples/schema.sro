@@ -1,81 +1,284 @@
-# Every syntax error fails at parse time instead of runtime
-# By default sro picks up config at ~/.config/sro/config.sro, use `--config` or `-c` to override.
-# Use `sro validate` to check config validity
-# Set your ultimate work directory! (no relative path)
-shell = `bash`; # first class primitive
-var shell workdir = `echo $HOME/dev`; # shell type will execute and return values
-sanctuary = $workdir;  # recommended
+# SRO Language Reference (schema.sro)
+#
+# SRO (Sanctuary Repository Orchestrator) is a local project orchestrator CLI.
+# This file documents every language feature with examples.
+#
+# Design principles:
+#   - Every syntax error fails at parse time, never at runtime.
+#   - All values use backtick delimiters: `...`
+#   - No escape sequences — what you type is what you get.
+#   - Variable interpolation inside backticks uses ${name} syntax.
+#   - All primitives are block-scoped with no leakage.
+#
+# CLI usage:
+#   sro sync                     Clone/sync all project repositories
+#   sro seq <name>               Run a sequential execution block
+#   sro par <name>               Run a parallel execution block
+#   sro -c <path> <command>      Use a custom config file (default: main.sro)
+#   sro --config <path> <cmd>    Same as -c
+#
+# Config discovery:
+#   By default sro looks for main.sro in the current directory.
+#   Use -c or --config to override.
 
-# import other files, only support relative path
-# fail on circular import
+# 1. SHELL DECLARATION (required, must be first)
+#
+# Declares which shell to use for:
+#   - `exec()` calls inside functions
+#   - `var shell` declarations (backtick-wrapped commands)
+#
+# Must appear before any `var shell` or `fn` declaration.
+
+shell = `bash`;
+
+# 2. VARIABLE DECLARATIONS
+#
+# Syntax: var <type> <name> = <value>;
+#
+# Every variable declaration requires exactly 3 tokens before `=`:
+#   1. `var`       keyword
+#   2. `string` or `shell`   data type
+#   3. identifier  variable name
+#
+# Types:
+#   string  — stores the backtick content as-is
+#   shell   — executes the backtick content via the declared shell,
+#             stores the stdout (trailing newline stripped)
+#
+# Variables are resolved in declaration order.
+# A variable must be declared before it can be referenced.
+
+var shell workdir = `echo $HOME/dev`;
+var string port = `127.0.0.1:8080`;
+var string greeting = `hello world`;
+
+# Reference a previously declared variable with $name:
+var string port_copy = $port;
+
+# 3. SANCTUARY (required)
+#
+# The root directory where all project repositories live.
+# Must be an absolute path.
+#
+# Accepts either a backtick literal or a $variable reference.
+# If you need $HOME or other env vars, use a shell variable first.
+
+sanctuary = $workdir;
+# sanctuary = `/home/user/dev`;    # absolute path literal also works
+
+# 4. IMPORTS
+#
+# Import other .sro files to split config across multiple files.
+# Only relative paths are supported.
+# Circular imports are detected and rejected at parse time.
+# Trailing commas are allowed.
+
 import [
-  ./test/other_config.sro,
-  ./test/example/work.sro
+    ./other_config.sro,
+    ./example/work.sro,
 ];
 
-var string port1 = `127.0.0.1:8080`;
-var string port2 = `192.168.1.3:2425`;
-var string port3 = $port1;
-var string idx_port = `3`;
-
-## project declaration
-# `sro sync` will clone these repos in relative path to sanctuary
-# missing url dir or both will result in error
-# Having git repo inside sanctuary that doesnt belong to the list below shows warning in `sro sync` whether user wants to remove it
+# 5. PROJECT DECLARATIONS
+#
+# Syntax: pr <name> { ... }
+#
+# Declares a git repository to be managed by `sro sync`.
+# Projects are cloned into <sanctuary>/<dir>.
+#
+# Fields:
+#   url   (required)  Git clone URL
+#   dir   (required)  Directory name relative to sanctuary (must be unique)
+#   sync  (optional)  `clone` (default) or `ignore`
+#                     clone  — clone if not exists, skip if exists
+#                     ignore — skip entirely, do not clone
+#   use   (optional)  Path to a .sro file inside the project repo
+#                     Relative to the project's directory
+#                     Parsed after `sro sync` clones the repo
+#                     Cannot contain sanctuary or pr declarations
+#                     Used to define project-specific fn/seq/par blocks
+#
+# Running `sro sync`:
+#   - Clones repos that don't exist yet
+#   - Skips repos that already exist (checks for .git directory)
+#   - Skips repos with sync = `ignore`
+#   - Warns about git repos in sanctuary not listed in config
 
 pr todo {
-    url = `git@github.com:yourname/todo.git`;  # projects can clone similar repos
-    dir = `todo`;  # will git clone at ~/dev/todo, dir across projects cannot be the same
-    sync = `clone`; # ← default behavior, clone only if not exist, ignore if does
-    # sync = `ignore`;   ← skip clone
-
-    # `use` is for importing sro files which depends on the exitence of correlated project
-    # without `use`, using the global `import{}` may fail at parse time.
-    # Path for `use` MUST be relative path
-    use = `./main.sro`; # base on project's directory, only use if repo has custom config inside.
-    # use = `./.sro/main.sro`;
+    url = `git@github.com:yourname/todo.git`;
+    dir = `todo`;
+    sync = `clone`;
 }
 
-## functions
-# cwd is auto-resolved to pr.dir
-# primitives: exec, cd (will map to pr.dir), env, log
-# scope: all primitives are block-scoped, no leakage
+pr calendar {
+    url = `git@github.com:yourname/calendar.git`;
+    dir = `calendar`;
+    sync = `clone`;
+    use = `.sro/main.sro`;
+}
+
+# pr archived {
+#     url = `git@github.com:yourname/old-project.git`;
+#     dir = `old-project`;
+#     sync = `ignore`;
+# }
+
+# 6. FUNCTION DECLARATIONS
+#
+# Syntax: fn <name> { ... }
+#
+# Functions define a sequence of operations to run against a project.
+# They are not executed directly — they are called from seq/par blocks
+# with a project binding: fnname(pr.projectname);
+#
+# The working directory (cwd) is automatically set to:
+#   <sanctuary>/<project.dir>
+#
+# Available primitives inside fn:
+#   log(<expr>);           Print a message to stdout
+#   exec(<expr>);          Run a shell command via the declared shell
+#   cd(<path>);            Change cwd relative to project dir (string only)
+#   var <type> <n> = <v>;  Declare a scoped variable
+#   env [...] { ... };     Scoped environment variable block
+#
+# Variable interpolation:
+#   Use ${name} inside backticks to interpolate variables.
+#   Both global vars and function-local vars are accessible.
+#   All variable references are validated at load time.
 
 fn init {
-    log(`Installing dependencies! For project at: `, $workdir, `!!`);
-    var string deps = `4`;
-    log(`Currently we have`, $deps, `dependencies!`);
-    cd(`cmd`); # cd to pr.dir + cd() value
-    env [ # scoped env block with no env leakage
-          GOFLAGS = `-mod=mod`,
-          CGO_ENABLED = `0`,
-          DB_URL = `postgres://localhost:5432`
-        ] {
-          env [CGO_ENABLED = `1`] { # same env will override
-            exec(`go build .`);
-          };
-          exec(`go mod download`);
-          exec(`go generate ./...`);
+    log(`Installing dependencies for ${greeting}!`);
+    exec(`go get -u`);
+    exec(`go mod tidy`);
+}
+
+fn build {
+    log(`Building project...`);
+
+    # Shell variables capture command output at load time
+    var shell version = `git describe --tags --always --dirty --first-parent 2>/dev/null || echo dev`;
+
+    # cd changes cwd relative to project dir
+    # cd(`.`) resets to project root
+    cd(`cmd`);
+
+    # env blocks scope environment variables — no leakage
+    # Variables declared inside env blocks are also scoped
+    env [
+        GOFLAGS = `-mod=mod`,
+        CGO_ENABLED = `0`,
+        DB_URL = `postgres://localhost:5432`
+    ] {
+        # Nested env blocks override outer values
+        env [CGO_ENABLED = `1`] {
+            exec(`go build -ldflags='-s -w -X main.version=${version}' -o bin/app .`);
         };
+
+        # CGO_ENABLED is back to `0` here
+        exec(`go mod download`);
+        exec(`go generate ./...`);
+    };
+
+    # GOFLAGS, CGO_ENABLED, DB_URL are gone here
     cd(`.`);
     exec(`go test ./...`);
-    exec(`staticcheck ./...`);
 }
 
-## seq - run functions sequentially
-# Stop everything when one function fails.
-
-# `sro seq init`
-seq init {
-    check(pr.todo); # executing functions for project
-    init(pr.calendar-ts);
+fn check {
+    log(`Running linters...`);
+    exec(`go fmt ./...`);
+    exec(`go vet ./...`);
+    exec(`golangci-lint run`);
 }
 
-## par - run functions in parallel
-# if a function fail it will be notified while others continue.
+fn test {
+    log(`Running tests on port ${port}...`);
+    exec(`go test ./... -v`);
+}
 
-# `sro par ci`
+# 7. SEQUENTIAL BLOCKS
+#
+# Syntax: seq <name> { ... }
+# CLI:    sro seq <name>
+#
+# Runs function calls and seq references in order, top to bottom.
+# Stops immediately when any step fails (fail-fast).
+#
+# Can contain:
+#   fnname(pr.project);    Call a function with a project binding
+#   seq.othername;         Reference another seq block
+#
+# Cannot contain:
+#   par.name;              Par blocks cannot be referenced (CLI only)
+
+seq quality {
+    check(pr.todo);
+    test(pr.todo);
+}
+
+seq deploy {
+    init(pr.todo);
+    build(pr.todo);
+    seq.quality;
+    init(pr.calendar);
+    build(pr.calendar);
+}
+
+# 8. PARALLEL BLOCKS
+#
+# Syntax: par <name> { ... }
+# CLI:    sro par <name>
+#
+# Runs all function calls and seq references concurrently.
+# If one task fails, others continue — errors are collected and reported.
+#
+# Can contain:
+#   fnname(pr.project);    Call a function with a project binding
+#   seq.name;              Reference a seq block
+#
+# Cannot contain:
+#   par.name;              Par blocks cannot be referenced (CLI only)
+#
+# Each parallel task gets its own isolated execution context.
+# Stdout may interleave between tasks.
+
 par ci {
-    build(pr.todo); # you can call functions!
-    seq.init; # and seq!
+    build(pr.todo);
+    build(pr.calendar);
+    seq.quality;
 }
+
+# GRAMMAR SUMMARY (EBNF)
+#
+# program     = { statement } ;
+# statement   = shellDecl | sanctuaryDecl | importDecl | varDecl
+#             | projectDecl | fnDecl | seqDecl | parDecl ;
+#
+# shellDecl   = "shell" "=" BACKTICK ";" ;
+# sanctuaryDecl = "sanctuary" "=" ( BACKTICK | "$" IDENT ) ";" ;
+# importDecl  = "import" "[" path { "," path } [ "," ] "]" ";" ;
+# varDecl     = "var" ( "string" | "shell" ) IDENT "=" ( BACKTICK | "$" IDENT ) ";" ;
+# projectDecl = "pr" IDENT "{" { projectField } "}" ;
+# projectField = IDENT "=" expr ";" ;
+# fnDecl      = "fn" IDENT "{" { fnStmt } "}" ;
+# seqDecl     = "seq" IDENT "{" { seqStmt } "}" ;
+# parDecl     = "par" IDENT "{" { parStmt } "}" ;
+#
+# fnStmt      = logStmt | execStmt | cdStmt | varDecl | envBlock ;
+# logStmt     = "log" "(" expr ")" ";" ;
+# execStmt    = "exec" "(" expr ")" ";" ;
+# cdStmt      = "cd" "(" BACKTICK ")" ";" ;
+# envBlock    = "env" "[" envPair { "," envPair } [ "," ] "]"
+#               "{" { fnStmt } "}" ";" ;
+# envPair     = IDENT "=" expr ;
+#
+# seqStmt     = fnCall | seqRef ;
+# parStmt     = fnCall | seqRef ;
+# fnCall      = IDENT "(" "pr" "." IDENT ")" ";" ;
+# seqRef      = "seq" "." IDENT ";" ;
+#
+# expr        = BACKTICK | "$" IDENT ;
+# BACKTICK    = "`" { char | "${" IDENT "}" } "`" ;
+# path        = "./" { char } ;
+#
+# Keywords: shell sanctuary import var string pr fn seq par
+#           env log exec cd

@@ -31,22 +31,12 @@ func (p *Parser) parseSanctuaryDecl() ast.Stmt {
 		return nil
 	}
 	p.nextToken() // move to value
-	var value ast.Expr
-	switch p.curToken.Type {
-	case token.BACKTICK:
-		value = &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal}
-	case token.DOLLAR:
-		p.nextToken()
-		if p.curToken.Type != token.IDENT {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
-			return nil
-		}
-		value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
-	default:
-		p.errors = append(p.errors, fmt.Sprintf("expected string or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
+	value := p.parseExpr()
+	if value == nil {
 		return nil
 	}
-	if !p.expectPeek(token.SEMICOLON) {
+	if !p.curTokenIs(token.SEMICOLON) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
 	return &ast.SanctuaryDecl{Token: tok, Value: value}
@@ -107,23 +97,12 @@ func (p *Parser) parseVarDecl() *ast.VarDecl {
 
 	// Expect value
 	p.nextToken()
-	var value ast.Expr
-	switch p.curToken.Type {
-	case token.BACKTICK:
-		value = &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal}
-	case token.DOLLAR:
-		p.nextToken()
-		if p.curToken.Type != token.IDENT {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
-			return nil
-		}
-		value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
-	default:
-		p.errors = append(p.errors, fmt.Sprintf("expected backtick literal or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
+	value := p.parseExpr()
+	if value == nil {
 		return nil
 	}
-
-	if !p.expectPeek(token.SEMICOLON) {
+	if !p.curTokenIs(token.SEMICOLON) {
+		p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
 	return &ast.VarDecl{Token: tok, VarType: varType, Name: name, Value: value}
@@ -155,12 +134,14 @@ func (p *Parser) parseProjectDecl() ast.Stmt {
 		if !p.expectPeek(token.ASSIGN) {
 			return nil
 		}
-		if !p.expectPeek(token.BACKTICK) {
+		p.nextToken() // move to value
+		value := p.parseExpr()
+		if value == nil {
 			return nil
 		}
-		value := p.curToken.Literal
 		fields = append(fields, ast.ProjectField{Key: key, Value: value})
-		if !p.expectPeek(token.SEMICOLON) {
+		if !p.curTokenIs(token.SEMICOLON) {
+			p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
 			return nil
 		}
 		p.nextToken() // advance to next field or }

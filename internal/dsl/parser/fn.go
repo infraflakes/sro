@@ -2,9 +2,73 @@ package parser
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
+
+// parseBacktickParts splits raw backtick content into TemplateParts for interpolation.
+func parseBacktickParts(raw string, line, col int) ([]ast.TemplatePart, error) {
+	var parts []ast.TemplatePart
+	i := 0
+	for i < len(raw) {
+		// Find next ${
+		idx := strings.Index(raw[i:], "${")
+		if idx == -1 {
+			// Rest is literal text
+			parts = append(parts, ast.TemplatePart{IsVar: false, Value: raw[i:]})
+			break
+		}
+		// Add literal text before ${
+		if idx > 0 {
+			parts = append(parts, ast.TemplatePart{IsVar: false, Value: raw[i : i+idx]})
+		}
+		// Find closing }
+		i += idx + 2 // skip past ${
+		end := strings.Index(raw[i:], "}")
+		if end == -1 {
+			return nil, fmt.Errorf("unterminated ${} at %d:%d", line, col)
+		}
+		name := raw[i : i+end]
+		if name == "" {
+			return nil, fmt.Errorf("empty ${} at %d:%d", line, col)
+		}
+		parts = append(parts, ast.TemplatePart{IsVar: true, Value: name})
+		i += end + 1 // skip past }
+	}
+	if len(parts) == 0 {
+		parts = append(parts, ast.TemplatePart{IsVar: false, Value: ""})
+	}
+	return parts, nil
+}
+
+// parseExpr parses a single expression (backtick literal or variable reference).
+func (p *Parser) parseExpr() ast.Expr {
+	switch p.curToken.Type {
+	case token.BACKTICK:
+		tok := p.curToken
+		parts, err := parseBacktickParts(p.curToken.Literal, p.curToken.Line, p.curToken.Col)
+		if err != nil {
+			p.errors = append(p.errors, err.Error())
+			return nil
+		}
+		p.nextToken() // consume BACKTICK
+		return &ast.BacktickLit{Token: tok, Parts: parts}
+	case token.DOLLAR:
+		p.nextToken()
+		if p.curToken.Type != token.IDENT {
+			p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
+			return nil
+		}
+		tok := p.curToken
+		p.nextToken() // consume IDENT
+		return &ast.VarRef{Token: tok, Name: tok.Literal}
+	default:
+		p.errors = append(p.errors, fmt.Sprintf("expected backtick literal or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
+		return nil
+	}
+}
 
 func (p *Parser) parseFnDecl() ast.Stmt {
 	tok := p.curToken
@@ -52,7 +116,8 @@ func (p *Parser) parseFnBody() []ast.FnStmt {
 		if stmt != nil {
 			stmts = append(stmts, stmt)
 		}
-		p.nextToken() // advance past ; to next token or }
+		// advance past ; to next token or }
+		p.nextToken()
 	}
 	return stmts
 }
@@ -63,7 +128,10 @@ func (p *Parser) parseLogStmt() ast.FnStmt {
 		return nil
 	}
 	p.nextToken() // advance past (
-	args := p.parseArgList()
+	expr := p.parseExpr()
+	if expr == nil {
+		return nil
+	}
 	if !p.curTokenIs(token.RPAREN) {
 		p.errors = append(p.errors, fmt.Sprintf("expected ')' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
@@ -76,7 +144,7 @@ func (p *Parser) parseLogStmt() ast.FnStmt {
 	// semicolon will be consumed by ParseProgram
 	return &ast.LogStmt{
 		Token: tok,
-		Args:  args,
+		Value: expr,
 	}
 }
 
@@ -86,7 +154,10 @@ func (p *Parser) parseExecStmt() ast.FnStmt {
 		return nil
 	}
 	p.nextToken() // advance past (
-	args := p.parseArgList()
+	expr := p.parseExpr()
+	if expr == nil {
+		return nil
+	}
 	if !p.curTokenIs(token.RPAREN) {
 		p.errors = append(p.errors, fmt.Sprintf("expected ')' at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
@@ -98,46 +169,8 @@ func (p *Parser) parseExecStmt() ast.FnStmt {
 	}
 	return &ast.ExecStmt{
 		Token: tok,
-		Args:  args,
+		Value: expr,
 	}
-}
-
-func (p *Parser) parseArgList() []ast.Expr {
-	args := []ast.Expr{}
-	if p.curTokenIs(token.RPAREN) {
-		return args // empty arg list
-	}
-	for {
-		switch p.curToken.Type {
-		case token.BACKTICK:
-			args = append(args, &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal})
-		case token.DOLLAR:
-			p.nextToken()
-			if p.curToken.Type != token.IDENT {
-				p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
-				return args
-			}
-			args = append(args, &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal})
-		default:
-			p.errors = append(p.errors, fmt.Sprintf("expected string or variable at %d:%d", p.curToken.Line, p.curToken.Col))
-			return args
-		}
-		if p.peekTokenIs(token.COMMA) {
-			p.nextToken() // to COMMA
-			p.nextToken() // to next argument or RPAREN
-			if p.curTokenIs(token.RPAREN) {
-				break // trailing comma
-			}
-			continue
-		}
-		if p.peekTokenIs(token.RPAREN) {
-			p.nextToken() // advance to RPAREN
-			break
-		}
-		// If neither comma nor RPAREN after argument, it's an error but will be caught by caller's RPAREN check
-		break
-	}
-	return args
 }
 
 func (p *Parser) parseCdStmt() ast.FnStmt {
@@ -176,47 +209,35 @@ func (p *Parser) parseEnvBlock() ast.FnStmt {
 			return nil
 		}
 		p.nextToken() // advance past =
-		var value ast.Expr
-		switch p.curToken.Type {
-		case token.BACKTICK:
-			value = &ast.BacktickLit{Token: p.curToken, Value: p.curToken.Literal}
-		case token.DOLLAR:
-			p.nextToken()
-			if p.curToken.Type != token.IDENT {
-				p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
-				return nil
-			}
-			value = &ast.VarRef{Token: p.curToken, Name: p.curToken.Literal}
-		default:
-			p.errors = append(p.errors, fmt.Sprintf("expected string literal or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
+		value := p.parseExpr()
+		if value == nil {
 			return nil
 		}
 		pairs = append(pairs, ast.EnvPair{Key: key, Value: value})
-		if p.peekTokenIs(token.COMMA) {
-			p.nextToken()
+		if p.curTokenIs(token.COMMA) {
 			if p.peekTokenIs(token.RBRACKET) {
-				break // trailing comma
+				p.nextToken() // to ]
+				p.nextToken() // past ]
+				break         // trailing comma
 			}
-			continue
+			continue // expectPeek(IDENT) at loop top advances from , to IDENT
 		}
-		if p.peekTokenIs(token.RBRACKET) {
+		if p.curTokenIs(token.RBRACKET) {
+			p.nextToken() // consume ]
 			break
 		}
 		p.errors = append(p.errors, fmt.Sprintf("expected ',' or ']' in env at %d:%d", p.peekToken.Line, p.peekToken.Col))
 		return nil
 	}
-	if !p.expectPeek(token.RBRACKET) {
+	if !p.curTokenIs(token.LBRACE) {
+		p.errors = append(p.errors, fmt.Sprintf("expected '{' after env pairs at %d:%d", p.curToken.Line, p.curToken.Col))
 		return nil
 	}
-	if !p.expectPeek(token.LBRACE) {
-		return nil
-	}
-	p.nextToken() // advance past {
+	p.nextToken() // consume {
 	body := p.parseFnBody()
-	// curToken is RBRACE after body
-	if !p.expectPeek(token.SEMICOLON) {
-		return nil
-	}
+	// curToken is RBRACE after body - parseFnBody stops at RBRACE
+	p.nextToken() // consume the env block's closing }
+	// semicolon will be consumed by parseFnBody
 	return &ast.EnvBlock{
 		Token: tok,
 		Pairs: pairs,

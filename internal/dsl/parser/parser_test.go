@@ -41,7 +41,7 @@ func TestParseProgram(t *testing.T) {
 		},
 		{
 			name:  "var with var ref",
-			input: "var string port1 = `a`; var string port2 = $port1;",
+			input: "var string port1 = `a`; var string port2 = `${port1}`;",
 			wantStmts: map[token.TokenType]int{
 				token.VAR: 2,
 			},
@@ -63,7 +63,7 @@ func TestParseProgram(t *testing.T) {
 		},
 		{
 			name:  "sanctuary with var ref",
-			input: "shell = `bash`; var shell dir = `echo /tmp`; sanctuary = $dir;",
+			input: "shell = `bash`; var shell dir = `echo /tmp`; sanctuary = `${dir}`;",
 			wantStmts: map[token.TokenType]int{
 				token.SHELL:     1,
 				token.VAR:       1,
@@ -155,8 +155,19 @@ func TestParseProjectDecl(t *testing.T) {
 		if !ok {
 			t.Fatalf("unexpected field key: %s", f.Key)
 		}
-		if f.Value != want {
-			t.Fatalf("field %s: want %q, got %q", f.Key, want, f.Value)
+		// f.Value is now ast.Expr, need to resolve it
+		var got string
+		switch v := f.Value.(type) {
+		case *ast.BacktickLit:
+			// For simple literals without interpolation, just join the parts
+			for _, part := range v.Parts {
+				got += part.Value
+			}
+		default:
+			t.Fatalf("unexpected value type: %T", f.Value)
+		}
+		if got != want {
+			t.Fatalf("field %s: want %q, got %q", f.Key, want, got)
 		}
 	}
 }
@@ -184,8 +195,8 @@ func TestParseFnWithEnv(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected LogStmt at index 0, got %T", fn.Body[0])
 	}
-	if len(logStmt.Args) != 1 {
-		t.Fatalf("expected 1 arg, got %d", len(logStmt.Args))
+	if logStmt.Value == nil {
+		t.Fatalf("expected Value to be non-nil")
 	}
 	// Check second: var
 	_, ok = fn.Body[1].(*ast.VarDecl)
@@ -260,7 +271,7 @@ par test {
 }
 
 func TestFullFile(t *testing.T) {
-	input := "sanctuary = `$HOME/dev`;\nimport [ ./other_config.sro, ./example/work.sro ];\nvar string port1 = `127.0.0.1:8080`;\nvar string port2 = `192.168.1.3:2425`;\nvar string port3 = $port1;\nvar string idx_port = `3`;\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}\nfn init {\n    log(`Installing dependencies!`);\n    var string deps = `4`;\n    log(`Currently we have`, $deps, `dependencies!`);\n    cd(`cmd`);\n    env [\n          GOFLAGS = `-mod=mod`,\n          CGO_ENABLED = `0`,\n          DB_URL = `postgres://localhost:5432`\n        ] {\n          env [CGO_ENABLED = `1`] {\n            exec(`go build .`);\n          };\n          exec(`go mod download`);\n          exec(`go generate ./...`);\n        };\n    cd(`.`);\n    exec(`go test ./...`);\n    exec(`staticcheck ./...`);\n}\nseq init {\n    check(pr.todo);\n    init(pr.calendar-ts);\n}\npar ci {\n    build(pr.todo);\n    seq.init;\n}"
+	input := "sanctuary = `$HOME/dev`;\nimport [ ./other_config.sro, ./example/work.sro ];\nvar string port1 = `127.0.0.1:8080`;\nvar string port2 = `192.168.1.3:2425`;\nvar string port3 = `${port1}`;\nvar string idx_port = `3`;\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}\nfn init {\n    log(`Installing dependencies!`);\n    var string deps = `4`;\n    log(`Currently we have ${deps} dependencies!`);\n    cd(`cmd`);\n    env [\n          GOFLAGS = `-mod=mod`,\n          CGO_ENABLED = `0`,\n          DB_URL = `postgres://localhost:5432`\n        ] {\n          env [CGO_ENABLED = `1`] {\n            exec(`go build .`);\n          };\n          exec(`go mod download`);\n          exec(`go generate ./...`);\n        };\n    cd(`.`);\n    exec(`go test ./...`);\n    exec(`staticcheck ./...`);\n}\nseq init {\n    check(pr.todo);\n    init(pr.calendar-ts);\n}\npar ci {\n    build(pr.todo);\n    seq.init;\n}"
 	l := lexer.New(input)
 	p := New(l)
 	prog := p.ParseProgram()
@@ -307,7 +318,7 @@ func TestFullFile(t *testing.T) {
 	// Spot-check some nodes:
 	// - Sanctuary value
 	san, _ := prog.Statements[0].(*ast.SanctuaryDecl)
-	if bl, ok := san.Value.(*ast.BacktickLit); !ok || bl.Value != "$HOME/dev" {
+	if bl, ok := san.Value.(*ast.BacktickLit); !ok || len(bl.Parts) != 1 || bl.Parts[0].Value != "$HOME/dev" {
 		t.Fatalf("sanctuary value wrong")
 	}
 	// - Import paths
@@ -317,7 +328,8 @@ func TestFullFile(t *testing.T) {
 	}
 	// - VarRef in var port3
 	var3, _ := prog.Statements[4].(*ast.VarDecl)
-	if vr, ok := var3.Value.(*ast.VarRef); !ok || vr.Name != "port1" {
+	bl, ok := var3.Value.(*ast.BacktickLit)
+	if !ok || len(bl.Parts) != 1 || !bl.Parts[0].IsVar || bl.Parts[0].Value != "port1" {
 		t.Fatalf("var port3 value incorrect")
 	}
 	// - fn body has env block with nested env
@@ -337,7 +349,7 @@ func TestErrorCases(t *testing.T) {
 		input       string
 		wantErrSubj string
 	}{
-		{"sanctuary = `$HOME`", "expected ;"}, // missing semicolon
+		{"sanctuary = `$HOME`", "expected ';'"}, // missing semicolon
 		{"pr x {", "missing closing brace"},
 		{"fn bad { unknown }", "unexpected token"},
 		{"pr x { url = `x`; unknown = `y`;", "invalid project field key"},

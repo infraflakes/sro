@@ -21,16 +21,12 @@ func validateFnBody(stmts []ast.FnStmt, localVars map[string]bool, fnName string
 			}
 			localVars[s.Name] = true
 		case *ast.LogStmt:
-			for _, arg := range s.Args {
-				if err := validateExpr(arg, localVars, fnName, i); err != nil {
-					return err
-				}
+			if err := validateExpr(s.Value, localVars, fnName, i); err != nil {
+				return err
 			}
 		case *ast.ExecStmt:
-			for _, arg := range s.Args {
-				if err := validateExpr(arg, localVars, fnName, i); err != nil {
-					return err
-				}
+			if err := validateExpr(s.Value, localVars, fnName, i); err != nil {
+				return err
 			}
 		case *ast.EnvBlock:
 			// Snapshot localVars before entering env block
@@ -114,7 +110,11 @@ func validateExpr(expr ast.Expr, localVars map[string]bool, fnName string, stmtI
 			return fmt.Errorf("function %q stmt %d: undefined variable $%s", fnName, stmtIndex, e.Name)
 		}
 	case *ast.BacktickLit:
-		// Always valid
+		for _, part := range e.Parts {
+			if part.IsVar && !localVars[part.Value] {
+				return fmt.Errorf("function %q stmt %d: undefined variable ${%s}", fnName, stmtIndex, part.Value)
+			}
+		}
 	}
 	return nil
 }

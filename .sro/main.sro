@@ -8,7 +8,7 @@ fn build {
   exec(`go mod tidy`);
   var shell version = `git describe --tags --always --dirty --first-parent 2>/dev/null || echo "dev"`;
   env[CGO_ENABLED = `0`] {
-      exec(`go build -ldflags='-s -w -X main.version=`,$version,`' -o bin/sro .`);
+      exec(`go build -ldflags='-s -w -X main.version=${version}' -o bin/sro .`);
   };
 }
 

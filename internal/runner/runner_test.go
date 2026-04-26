@@ -24,7 +24,7 @@ func newTestToken(typ token.TokenType) token.Token {
 func newBacktickLit(value string) *ast.BacktickLit {
 	return &ast.BacktickLit{
 		Token: newTestToken(token.BACKTICK),
-		Value: value,
+		Parts: []ast.TemplatePart{{IsVar: false, Value: value}},
 	}
 }
 
@@ -35,17 +35,17 @@ func newVarRef(name string) *ast.VarRef {
 	}
 }
 
-func newLogStmt(args []ast.Expr) *ast.LogStmt {
+func newLogStmt(value ast.Expr) *ast.LogStmt {
 	return &ast.LogStmt{
 		Token: newTestToken(token.LOG),
-		Args:  args,
+		Value: value,
 	}
 }
 
-func newExecStmt(args []ast.Expr) *ast.ExecStmt {
+func newExecStmt(value ast.Expr) *ast.ExecStmt {
 	return &ast.ExecStmt{
 		Token: newTestToken(token.EXEC),
-		Args:  args,
+		Value: value,
 	}
 }
 
@@ -132,11 +132,7 @@ func TestExecLog(t *testing.T) {
 	cfg := testConfig()
 	ctx := newExecContext(cfg, cfg.Projects["testproj"])
 
-	stmt := newLogStmt([]ast.Expr{
-		newBacktickLit("hello"),
-		newBacktickLit(" "),
-		newBacktickLit("world"),
-	})
+	stmt := newLogStmt(newBacktickLit("hello world"))
 
 	out, err := captureOutput(func() {
 		err := ctx.execLog(stmt)
@@ -240,9 +236,9 @@ func TestExecEnvBlock(t *testing.T) {
 	}
 
 	innerBody := []ast.FnStmt{
-		newExecStmt([]ast.Expr{
+		newExecStmt(
 			newBacktickLit("env"),
-		}),
+		),
 	}
 	block := newEnvBlock([]ast.EnvPair{{Key: "FOO", Value: newBacktickLit("bar")}}, innerBody)
 
@@ -278,23 +274,23 @@ func TestExecEnvBlockNestedOverride(t *testing.T) {
 
 	outerBody := []ast.FnStmt{
 		newEnvBlock([]ast.EnvPair{{Key: "X", Value: newBacktickLit("1")}}, []ast.FnStmt{
-			newLogStmt([]ast.Expr{newBacktickLit("outer-start")}),
+			newLogStmt(newBacktickLit("outer-start")),
 			// Print env to capture X
-			newExecStmt([]ast.Expr{
+			newExecStmt(
 				newBacktickLit("env"),
-			}),
+			),
 			newEnvBlock([]ast.EnvPair{{Key: "X", Value: newBacktickLit("2")}}, []ast.FnStmt{
-				newLogStmt([]ast.Expr{newBacktickLit("inner")}),
+				newLogStmt(newBacktickLit("inner")),
 				// Print env to capture X
-				newExecStmt([]ast.Expr{
+				newExecStmt(
 					newBacktickLit("env"),
-				}),
+				),
 			}),
 			// After inner block, X should be back to 1
-			newExecStmt([]ast.Expr{
+			newExecStmt(
 				newBacktickLit("env"),
-			}),
-			newLogStmt([]ast.Expr{newBacktickLit("outer-end")}),
+			),
+			newLogStmt(newBacktickLit("outer-end")),
 		}),
 	}
 
@@ -343,7 +339,7 @@ func TestExecEnvBlockVarScoping(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for undefined var innerVar outside env block")
 	}
-	if !strings.Contains(err.Error(), "undefined variable: $innerVar") {
+	if !strings.Contains(err.Error(), "undefined variable $innerVar") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -365,9 +361,9 @@ func TestExecEnvBlockVarRefs(t *testing.T) {
 
 	// Test env value with var ref
 	innerBody := []ast.FnStmt{
-		newExecStmt([]ast.Expr{
+		newExecStmt(
 			newBacktickLit("env"),
-		}),
+		),
 	}
 	envPairs := []ast.EnvPair{{Key: "TEST_VAR", Value: newVarRef("myvar")}}
 	block := newEnvBlock(envPairs, innerBody)
@@ -390,13 +386,13 @@ func TestSeqFailFast(t *testing.T) {
 
 	// Function that will fail
 	failFn := newFnDecl("fail", []ast.FnStmt{
-		newExecStmt([]ast.Expr{newBacktickLit("false")}),
+		newExecStmt(newBacktickLit("false")),
 	})
 	cfg.Functions["fail"] = failFn
 
 	// Function that should NOT run
 	secondFn := newFnDecl("second", []ast.FnStmt{
-		newLogStmt([]ast.Expr{newBacktickLit("second-called")}),
+		newLogStmt(newBacktickLit("second-called")),
 	})
 	cfg.Functions["second"] = secondFn
 
@@ -423,13 +419,13 @@ func TestParContinuesOnFailure(t *testing.T) {
 
 	// Function that fails
 	failFn := newFnDecl("fail", []ast.FnStmt{
-		newExecStmt([]ast.Expr{newBacktickLit("false")}),
+		newExecStmt(newBacktickLit("false")),
 	})
 	cfg.Functions["fail"] = failFn
 
 	// Function that succeeds
 	successFn := newFnDecl("success", []ast.FnStmt{
-		newLogStmt([]ast.Expr{newBacktickLit("success-called")}),
+		newLogStmt(newBacktickLit("success-called")),
 	})
 	cfg.Functions["success"] = successFn
 
@@ -457,7 +453,7 @@ func TestParContinuesOnFailure(t *testing.T) {
 func TestSeqCallsSeq(t *testing.T) {
 	cfg := testConfig()
 	logFn := newFnDecl("logfn", []ast.FnStmt{
-		newLogStmt([]ast.Expr{newBacktickLit("inner-log")}),
+		newLogStmt(newBacktickLit("inner-log")),
 	})
 	cfg.Functions["logfn"] = logFn
 
@@ -493,7 +489,7 @@ func TestSeqCallsSeq(t *testing.T) {
 func TestParCallsSeq(t *testing.T) {
 	cfg := testConfig()
 	logFn := newFnDecl("logfn", []ast.FnStmt{
-		newLogStmt([]ast.Expr{newBacktickLit("par-seq-log")}),
+		newLogStmt(newBacktickLit("par-seq-log")),
 	})
 	cfg.Functions["logfn"] = logFn
 

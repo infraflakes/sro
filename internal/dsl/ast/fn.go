@@ -10,7 +10,7 @@ type FnStmt interface {
 
 type LogStmt struct {
 	Token token.Token
-	Args  []Expr
+	Value Expr
 }
 
 func (ls *LogStmt) TokenLiteral() string { return ls.Token.Literal }
@@ -20,7 +20,7 @@ func (ls *LogStmt) fnStmt()              {}
 
 type ExecStmt struct {
 	Token token.Token
-	Args  []Expr
+	Value Expr
 }
 
 func (es *ExecStmt) TokenLiteral() string { return es.Token.Literal }
