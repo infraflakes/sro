@@ -47,7 +47,11 @@ func (ctx *execContext) execLog(s *ast.LogStmt) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(msg)
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	fmt.Fprintf(writer, "\033[38;2;255;203;107mlog\033[0m  %s\n", msg)
 	return nil
 }
 
@@ -56,13 +60,17 @@ func (ctx *execContext) execExec(s *ast.ExecStmt) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("  exec  %s\n", cmdStr)
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	fmt.Fprintf(writer, "\033[38;2;91;156;246mexec\033[0m %s\n", cmdStr)
 
 	cmd := exec.Command(ctx.cfg.Shell, "-c", cmdStr)
 	cmd.Dir = ctx.workDir
 	cmd.Env = ctx.buildEnv()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = writer
+	cmd.Stderr = writer
 
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
@@ -84,6 +92,11 @@ func (ctx *execContext) execCd(s *ast.CdStmt) error {
 	if _, err := os.Stat(ctx.workDir); err != nil {
 		return fmt.Errorf("cd %q: %w", s.Arg, err)
 	}
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	fmt.Fprintf(writer, "\033[38;2;255;203;107mcd\033[0m   %s\n", s.Arg)
 	return nil
 }
 
@@ -117,6 +130,12 @@ func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 		layer[p.Key] = val
 	}
 	ctx.envStack = append(ctx.envStack, layer)
+
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	fmt.Fprintf(writer, "\033[38;2;199;146;234menv\033[0m  %s\n", s.Pairs[0].Key)
 
 	// Snapshot vars before body so local vars don't leak
 	savedVars := make(map[string]string, len(ctx.vars))

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -17,9 +18,10 @@ type execContext struct {
 	vars     map[string]string
 	envStack []map[string]string
 	workDir  string
+	writer   io.Writer
 }
 
-func newExecContext(cfg *config.Config, proj *config.Project) *execContext {
+func newExecContext(cfg *config.Config, proj *config.Project, writer io.Writer) *execContext {
 	vars := make(map[string]string, len(cfg.Vars))
 	maps.Copy(vars, cfg.Vars)
 
@@ -31,6 +33,7 @@ func newExecContext(cfg *config.Config, proj *config.Project) *execContext {
 		vars:     vars,
 		envStack: []map[string]string{},
 		workDir:  baseDir,
+		writer:   writer,
 	}
 }
 

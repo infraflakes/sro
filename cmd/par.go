@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/infraflakes/sro/internal/config"
+	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/runner"
+	"github.com/infraflakes/sro/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -24,9 +28,82 @@ func runPar(name string) {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	r := runner.New(cfg)
-	if err := r.RunPar(name); err != nil {
-		fmt.Fprintf(os.Stderr, "par error: %v\n", err)
+
+	par, ok := cfg.Pars[name]
+	if !ok {
+		fmt.Fprintf(os.Stderr, "unknown par: %s\n", name)
+		os.Exit(1)
+	}
+
+	model := &tui.Model{
+		Type:     "par",
+		Name:     name,
+		Status:   "running",
+		Selected: 0,
+	}
+
+	// Create a buffer per task in the par
+	for _, stmt := range par.Stmts {
+		label := labelForStmt(stmt)
+		buf := &bytes.Buffer{}
+		model.Tasks = append(model.Tasks, tui.Task{
+			Label:    label,
+			Status:   "pending",
+			Expanded: false,
+			Output:   buf,
+			Writer:   buf,
+		})
+	}
+
+	// Run par in background goroutine
+	go func() {
+		var wg sync.WaitGroup
+		var mu sync.Mutex
+		var hasFailed bool
+
+		for i, stmt := range par.Stmts {
+			wg.Add(1)
+			go func(idx int, s ast.Stmt) {
+				defer wg.Done()
+
+				model.Tasks[idx].Status = "running"
+				model.Tasks[idx].Expanded = true
+
+				r := runner.New(cfg)
+				r.Writer = model.Tasks[idx].Writer
+
+				var err error
+				switch stmt := s.(type) {
+				case *ast.FnCall:
+					err = r.ExecuteFnCall(stmt)
+				case *ast.SeqRef:
+					err = r.RunSeqWithWriter(stmt.SeqName, model.Tasks[idx].Writer)
+				}
+
+				if err != nil {
+					model.Tasks[idx].Status = "failed"
+					mu.Lock()
+					hasFailed = true
+					mu.Unlock()
+				} else {
+					model.Tasks[idx].Status = "ok"
+				}
+			}(i, stmt)
+		}
+
+		wg.Wait()
+
+		mu.Lock()
+		if hasFailed {
+			model.Status = "failed"
+		} else {
+			model.Status = "ok"
+		}
+		mu.Unlock()
+	}()
+
+	if err := tui.Run(model); err != nil {
+		fmt.Fprintf(os.Stderr, "tui error: %v\n", err)
 		os.Exit(1)
 	}
 }
