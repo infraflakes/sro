@@ -60,6 +60,13 @@ func runSeq(name string) {
 		label := labelForStmt(stmt)
 		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}), vt.MockOptColors(1<<24))
 		if err := vterm.Start(); err != nil {
+			// Still append task with nil VTerm to maintain index alignment
+			model.Tasks = append(model.Tasks, tui.Task{
+				Label:    label,
+				Status:   "failed",
+				Expanded: false,
+				VTerm:    nil,
+			})
 			continue
 		}
 		_, _ = vterm.Write([]byte("\x1b[20h")) // enable newline mode: LF implies CR
@@ -77,12 +84,22 @@ func runSeq(name string) {
 
 	go func() {
 		for i, stmt := range seq.Stmts {
+			// Skip if vterm failed to start
+			if model.Tasks[i].VTerm == nil {
+				model.Mu.Lock()
+				model.Status = "failed"
+				model.Mu.Unlock()
+				return
+			}
+
+			model.Mu.Lock()
 			model.Tasks[i].Status = "running"
 			model.Tasks[i].Expanded = true
 			// collapse previous
 			if i > 0 {
 				model.Tasks[i-1].Expanded = false
 			}
+			model.Mu.Unlock()
 
 			r := runner.NewWithContext(cfg, ctx)
 			r.Writer = tui.NewLineCountingWriter(model.Tasks[i].VTerm, &model.Tasks[i].TotalLines)
@@ -93,18 +110,24 @@ func runSeq(name string) {
 			case *ast.FnCall:
 				err = r.ExecuteFnCall(s)
 			case *ast.SeqRef:
-				err = r.RunSeqWithWriter(s.SeqName, model.Tasks[i].VTerm)
+				err = r.RunSeqWithWriter(s.SeqName, tui.NewLineCountingWriter(model.Tasks[i].VTerm, &model.Tasks[i].TotalLines))
 			}
 
 			if err != nil {
+				model.Mu.Lock()
 				model.Tasks[i].Status = "failed"
 				model.Status = "failed"
+				model.Mu.Unlock()
 				// mark remaining as pending (fail-fast)
 				return
 			}
+			model.Mu.Lock()
 			model.Tasks[i].Status = "ok"
+			model.Mu.Unlock()
 		}
+		model.Mu.Lock()
 		model.Status = "ok"
+		model.Mu.Unlock()
 	}()
 
 	if err := tui.RunWithContext(ctx, model); err != nil {

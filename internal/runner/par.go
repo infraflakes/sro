@@ -37,6 +37,8 @@ func (r *Runner) RunParWithWriter(name string, writer io.Writer) error {
 			wg.Add(1)
 			go func(call *ast.FnCall) {
 				defer wg.Done()
+				// Create a new runner per goroutine to avoid data race on Writer field
+				r := r.clone()
 				r.Writer = writer
 				if err := r.executeFnCall(call); err != nil {
 					mu.Lock()
@@ -55,6 +57,8 @@ func (r *Runner) RunParWithWriter(name string, writer io.Writer) error {
 					mu.Unlock()
 					return
 				}
+				// Create a new runner per goroutine to avoid data race on Writer field
+				r := r.clone()
 				if err := r.executeSeqWithWriter(refSeq, writer); err != nil {
 					mu.Lock()
 					errs = append(errs, fmt.Errorf("seq.%s: %w", ref.SeqName, err))

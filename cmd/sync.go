@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"sync"
 
 	"github.com/gdamore/tcell/v3/vt"
@@ -58,11 +59,19 @@ func runSync() {
 	for name := range cfg.Projects {
 		projNames = append(projNames, name)
 	}
+	sort.Strings(projNames)
 
 	for _, name := range projNames {
 		proj := cfg.Projects[name]
 		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}), vt.MockOptColors(1<<24))
 		if err := vterm.Start(); err != nil {
+			// Still append task with nil VTerm to maintain index alignment
+			model.Tasks = append(model.Tasks, tui.Task{
+				Label:    proj.Name,
+				Status:   "failed",
+				Expanded: false,
+				VTerm:    nil,
+			})
 			continue
 		}
 		_, _ = vterm.Write([]byte("\x1b[20h")) // enable newline mode
@@ -89,19 +98,31 @@ func runSync() {
 			go func(idx int, p *config.Project) {
 				defer wg.Done()
 
+				// Skip if vterm failed to start
+				if model.Tasks[idx].VTerm == nil {
+					mu.Lock()
+					hasFailed = true
+					mu.Unlock()
+					return
+				}
+
 				// Status is already "running" from initialization
 
 				err := srSync.SyncProjectWithContext(ctx, cfg, p, tui.NewLineCountingWriter(model.Tasks[idx].VTerm, &model.Tasks[idx].TotalLines))
 
 				if err != nil {
+					model.Mu.Lock()
 					model.Tasks[idx].Status = "failed"
+					model.Mu.Unlock()
 					// Write error to vterm so user can see it when expanded
 					_, _ = fmt.Fprintf(model.Tasks[idx].VTerm, "\033[38;2;224;92;106m%v\033[0m\n", err)
 					mu.Lock()
 					hasFailed = true
 					mu.Unlock()
 				} else {
+					model.Mu.Lock()
 					model.Tasks[idx].Status = "ok"
+					model.Mu.Unlock()
 				}
 			}(i, proj)
 		}
@@ -112,9 +133,13 @@ func runSync() {
 
 		mu.Lock()
 		if hasFailed {
+			model.Mu.Lock()
 			model.Status = "failed"
+			model.Mu.Unlock()
 		} else {
+			model.Mu.Lock()
 			model.Status = "ok"
+			model.Mu.Unlock()
 		}
 		mu.Unlock()
 	}()

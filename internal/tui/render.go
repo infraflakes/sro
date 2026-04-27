@@ -6,6 +6,7 @@ import (
 	"github.com/gdamore/tcell/v3"
 	"github.com/gdamore/tcell/v3/color"
 	"github.com/gdamore/tcell/v3/vt"
+	"github.com/mattn/go-runewidth"
 )
 
 var SpinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
@@ -23,22 +24,29 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	// Header (includes its own separator and spacing)
 	renderHeader(screen, model, w, &y)
 
+	// Copy task data under lock for safe concurrent access
+	model.Mu.Lock()
+	tasksCopy := make([]Task, len(model.Tasks))
+	copy(tasksCopy, model.Tasks)
+	scrollOffset := model.ScrollOffset
+	model.Mu.Unlock()
+
 	// Task rows — render until we run out of screen space
-	for i := model.ScrollOffset; i < len(model.Tasks); i++ {
+	for i := scrollOffset; i < len(tasksCopy); i++ {
 		if y >= footerY {
 			break
 		}
-		renderTaskRow(screen, model, i, w, &y, spinnerIdx)
+		renderTaskRow(screen, tasksCopy, i, w, &y, spinnerIdx, model.Selected)
 		if y >= footerY {
 			break // task row itself hit the boundary
 		}
-		if model.Tasks[i].Expanded {
-			renderExpandedPanel(screen, &model.Tasks[i], w, &y, footerY)
+		if tasksCopy[i].Expanded {
+			renderExpandedPanel(screen, &tasksCopy[i], w, &y, footerY)
 		}
 	}
 
 	// Footer (includes its own separator and spacing)
-	renderFooter(screen, model, w, h, spinnerIdx)
+	renderFooter(screen, tasksCopy, w, h, spinnerIdx)
 }
 
 func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
@@ -87,9 +95,9 @@ func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
 	}
 }
 
-func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int, spinnerIdx int) {
-	task := &model.Tasks[taskIdx]
-	isSelected := taskIdx == model.Selected
+func renderTaskRow(screen tcell.Screen, tasks []Task, taskIdx int, w int, y *int, spinnerIdx int, selected int) {
+	task := &tasks[taskIdx]
+	isSelected := taskIdx == selected
 
 	// Clear the row with default background
 	for x := range w {
@@ -129,16 +137,19 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 	if isSelected {
 		labelColor = TextBright
 	}
-	for i, r := range task.Label {
-		style := tcell.StyleDefault.Foreground(labelColor)
-		if isSelected {
-			style = style.Bold(true)
-		}
-		screen.SetContent(4+i, *y, r, nil, style)
+	col := 4
+	style := tcell.StyleDefault.Foreground(labelColor)
+	if isSelected {
+		style = style.Bold(true)
+	}
+	for _, r := range task.Label {
+		screen.SetContent(col, *y, r, nil, style)
+		col += runewidth.RuneWidth(r)
 	}
 
 	// Expand arrow (hide for pending tasks in seq mode)
-	if model.Type != "seq" || task.Status != "pending" {
+	// Note: model.Type is not available here, but this check is handled by the executor
+	if task.Status != "pending" {
 		arrow := '▶'
 		if task.Expanded {
 			arrow = '▼'
@@ -228,7 +239,7 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int, maxY in
 	}
 }
 
-func renderFooter(screen tcell.Screen, model *Model, w, h int, spinnerIdx int) {
+func renderFooter(screen tcell.Screen, tasks []Task, w, h int, spinnerIdx int) {
 	footerStart := h - 4 // footer zone is 4 rows tall
 
 	// Clear all footer rows
@@ -242,7 +253,7 @@ func renderFooter(screen tcell.Screen, model *Model, w, h int, spinnerIdx int) {
 	y := h - 1
 
 	var okCount, runningCount, pendingCount, failedCount int
-	for _, task := range model.Tasks {
+	for _, task := range tasks {
 		switch task.Status {
 		case "ok":
 			okCount++

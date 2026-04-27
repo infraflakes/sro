@@ -30,6 +30,8 @@ func (r *Runner) executeSeqWithWriter(seq *ast.SeqDecl, writer io.Writer) error 
 	for _, stmt := range seq.Stmts {
 		switch s := stmt.(type) {
 		case *ast.FnCall:
+			// Create a new runner to avoid data race on Writer field
+			r := r.clone()
 			r.Writer = writer
 			if err := r.executeFnCall(s); err != nil {
 				return err

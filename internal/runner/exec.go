@@ -135,11 +135,12 @@ func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	if len(s.Pairs) > 0 {
-		_, _ = fmt.Fprintf(writer, "%s\033[38;2;199;146;234menv  %s\033[0m\n", ctx.indent(), s.Pairs[0].Key)
-	} else {
-		_, _ = fmt.Fprintf(writer, "%s\033[38;2;199;146;234menv\033[0m\n", ctx.indent())
+	keys := make([]string, 0, len(s.Pairs))
+	for _, p := range s.Pairs {
+		keys = append(keys, p.Key)
 	}
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;199;146;234menv  %s\033[0m\n",
+		ctx.indent(), strings.Join(keys, ", "))
 
 	ctx.envStack = append(ctx.envStack, layer)
 	ctx.envDirty = true

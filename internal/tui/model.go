@@ -2,6 +2,7 @@ package tui
 
 import (
 	"io"
+	"sync"
 
 	"github.com/gdamore/tcell/v3/vt"
 )
@@ -13,6 +14,7 @@ type Model struct {
 	Tasks        []Task
 	Selected     int // keyboard cursor position
 	ScrollOffset int // viewport scroll offset
+	Mu           sync.Mutex
 }
 
 type Task struct {
@@ -31,16 +33,12 @@ type lineCountingWriter struct {
 
 func (w *lineCountingWriter) Write(p []byte) (int, error) {
 	n, err := w.writer.Write(p)
-	if err != nil {
-		return n, err
-	}
-	// Count newlines in the written data
-	for _, b := range p {
+	for _, b := range p[:n] {
 		if b == '\n' {
 			*w.totalLines++
 		}
 	}
-	return n, nil
+	return n, err
 }
 
 // NewLineCountingWriter creates a writer that counts newlines written to it

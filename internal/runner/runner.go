@@ -25,6 +25,17 @@ func NewWithContext(cfg *config.Config, ctx context.Context) *Runner {
 	return &Runner{cfg: cfg, Writer: os.Stdout, Ctx: ctx, SuppressHeaders: false}
 }
 
+// clone creates a shallow copy of the Runner for use in goroutines
+// to avoid data races on shared fields like Writer
+func (r *Runner) clone() *Runner {
+	return &Runner{
+		cfg:             r.cfg,
+		Writer:          r.Writer,
+		Ctx:             r.Ctx,
+		SuppressHeaders: r.SuppressHeaders,
+	}
+}
+
 func (r *Runner) ExecuteFnCall(call *ast.FnCall) error {
 	fn, ok := r.cfg.Functions[call.FnName]
 	if !ok {

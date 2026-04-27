@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/gdamore/tcell/v3 v3.3.0
 	github.com/go-git/go-git/v5 v5.18.0
+	github.com/mattn/go-runewidth v0.0.23
 	github.com/spf13/cobra v1.10.2
 )
 

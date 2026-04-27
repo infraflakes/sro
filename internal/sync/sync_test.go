@@ -215,8 +215,16 @@ func TestRun_CloneFailure(t *testing.T) {
 }
 
 func TestRun_SanctuaryPermissionDenied(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses permission checks")
+	}
+	parent := t.TempDir()
+	if err := os.Chmod(parent, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(parent, 0o700) })
 	cfg := &config.Config{
-		Sanctuary: "/proc/fake/impossible", // unwritable path
+		Sanctuary: filepath.Join(parent, "child"),
 		Projects:  map[string]*config.Project{},
 	}
 	err := Run(cfg)

@@ -45,7 +45,7 @@
           ldflags = [
             "-s"
             "-w"
-            "-X main.version=${version}"
+            "-X github.com/infraflakes/sro/cmd.version=${version}"
           ];
 
           nativeBuildInputs = [pkgs.installShellFiles pkgs.git];

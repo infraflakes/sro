@@ -61,6 +61,13 @@ func runPar(name string) {
 		label := labelForStmt(stmt)
 		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}), vt.MockOptColors(1<<24))
 		if err := vterm.Start(); err != nil {
+			// Still append task with nil VTerm to maintain index alignment
+			model.Tasks = append(model.Tasks, tui.Task{
+				Label:    label,
+				Status:   "failed",
+				Expanded: false,
+				VTerm:    nil,
+			})
 			continue
 		}
 		_, _ = vterm.Write([]byte("\x1b[20h")) // enable newline mode: LF implies CR
@@ -86,7 +93,14 @@ func runPar(name string) {
 			go func(idx int, s ast.Stmt) {
 				defer wg.Done()
 
+				// Skip if vterm failed to start
+				if model.Tasks[idx].VTerm == nil {
+					return
+				}
+
+				model.Mu.Lock()
 				model.Tasks[idx].Status = "running"
+				model.Mu.Unlock()
 				// Don't auto-expand in par - user controls expansion
 
 				r := runner.NewWithContext(cfg, ctx)
@@ -102,12 +116,16 @@ func runPar(name string) {
 				}
 
 				if err != nil {
+					model.Mu.Lock()
 					model.Tasks[idx].Status = "failed"
+					model.Mu.Unlock()
 					mu.Lock()
 					hasFailed = true
 					mu.Unlock()
 				} else {
+					model.Mu.Lock()
 					model.Tasks[idx].Status = "ok"
+					model.Mu.Unlock()
 				}
 			}(i, stmt)
 		}
@@ -116,9 +134,13 @@ func runPar(name string) {
 
 		mu.Lock()
 		if hasFailed {
+			model.Mu.Lock()
 			model.Status = "failed"
+			model.Mu.Unlock()
 		} else {
+			model.Mu.Lock()
 			model.Status = "ok"
+			model.Mu.Unlock()
 		}
 		mu.Unlock()
 	}()
