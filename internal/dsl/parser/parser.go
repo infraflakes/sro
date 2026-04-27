@@ -8,17 +8,27 @@ import (
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
+type ParseError struct {
+	Message string
+	Line    int
+	Col     int
+}
+
+func (e ParseError) Error() string {
+	return fmt.Sprintf("%d:%d: %s", e.Line, e.Col, e.Message)
+}
+
 type Parser struct {
 	l         *lexer.Lexer
 	curToken  token.Token
 	peekToken token.Token
-	errors    []string
+	errors    []ParseError
 }
 
 func New(l *lexer.Lexer) *Parser {
 	p := &Parser{
 		l:      l,
-		errors: []string{},
+		errors: []ParseError{},
 	}
 	p.nextToken()
 	p.nextToken()
@@ -48,16 +58,19 @@ func (p *Parser) expectPeek(t token.TokenType) bool {
 }
 
 func (p *Parser) peekError(t token.TokenType) {
-	msg := fmt.Sprintf("expected %s, got %s at %d:%d", t, p.peekToken.Type, p.peekToken.Line, p.peekToken.Col)
-	p.errors = append(p.errors, msg)
+	p.errors = append(p.errors, ParseError{
+		Message: fmt.Sprintf("expected %s, got %s", t, p.peekToken.Type),
+		Line:    p.peekToken.Line,
+		Col:     p.peekToken.Col,
+	})
 }
 
-func (p *Parser) Errors() []string {
+func (p *Parser) Errors() []ParseError {
 	return p.errors
 }
 
 func (p *Parser) ParseProgram() *ast.Program {
-	program := &ast.Program{Statements: []ast.Node{}}
+	program := &ast.Program{Statements: []ast.Stmt{}}
 
 	for p.curToken.Type != token.EOF {
 		var stmt ast.Stmt
@@ -79,7 +92,11 @@ func (p *Parser) ParseProgram() *ast.Program {
 		case token.PAR:
 			stmt = p.parseParDecl()
 		default:
-			p.errors = append(p.errors, fmt.Sprintf("unexpected token %s at %d:%d", p.curToken.Type, p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: fmt.Sprintf("unexpected token %s", p.curToken.Type),
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			p.nextToken()
 			continue
 		}

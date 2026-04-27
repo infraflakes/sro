@@ -36,7 +36,11 @@ func (p *Parser) parseSanctuaryDecl() ast.Stmt {
 		return nil
 	}
 	if !p.curTokenIs(token.SEMICOLON) {
-		p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
+		p.errors = append(p.errors, ParseError{
+			Message: "expected ';'",
+			Line:    p.curToken.Line,
+			Col:     p.curToken.Col,
+		})
 		return nil
 	}
 	return &ast.SanctuaryDecl{Token: tok, Value: value}
@@ -51,7 +55,11 @@ func (p *Parser) parseImportDecl() ast.Stmt {
 	paths := []string{}
 	for p.curToken.Type != token.RBRACKET {
 		if p.curToken.Type != token.PATH_LIT {
-			p.errors = append(p.errors, fmt.Sprintf("expected path literal at %d:%d", p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "expected path literal",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return nil
 		}
 		paths = append(paths, p.curToken.Literal)
@@ -59,7 +67,11 @@ func (p *Parser) parseImportDecl() ast.Stmt {
 		if p.curToken.Type == token.COMMA {
 			p.nextToken() // skip comma, move to next path or RBRACKET
 		} else if p.curToken.Type != token.RBRACKET {
-			p.errors = append(p.errors, fmt.Sprintf("expected ',' or ']' after path at %d:%d", p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "expected ',' or ']' after path",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return nil
 		}
 	}
@@ -78,7 +90,11 @@ func (p *Parser) parseVarDecl() *ast.VarDecl {
 
 	// Expect type annotation: string or shell
 	if !p.peekTokenIs(token.STRING_KW) && !p.peekTokenIs(token.SHELL) {
-		p.errors = append(p.errors, fmt.Sprintf("expected 'string' or 'shell' after var at %d:%d", p.peekToken.Line, p.peekToken.Col))
+		p.errors = append(p.errors, ParseError{
+			Message: "expected 'string' or 'shell' after var",
+			Line:    p.peekToken.Line,
+			Col:     p.peekToken.Col,
+		})
 		return nil
 	}
 	p.nextToken()
@@ -102,7 +118,11 @@ func (p *Parser) parseVarDecl() *ast.VarDecl {
 		return nil
 	}
 	if !p.curTokenIs(token.SEMICOLON) {
-		p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
+		p.errors = append(p.errors, ParseError{
+			Message: "expected ';'",
+			Line:    p.curToken.Line,
+			Col:     p.curToken.Col,
+		})
 		return nil
 	}
 	return &ast.VarDecl{Token: tok, VarType: varType, Name: name, Value: value}
@@ -121,13 +141,21 @@ func (p *Parser) parseProjectDecl() ast.Stmt {
 	fields := []ast.ProjectField{}
 	for !p.curTokenIs(token.RBRACE) {
 		if p.curTokenIs(token.EOF) {
-			p.errors = append(p.errors, fmt.Sprintf("missing closing brace for project at %d:%d", p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "missing closing brace for project",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return nil
 		}
 		key := p.curToken.Literal
 		validKeys := map[string]bool{"url": true, "dir": true, "sync": true, "use": true}
 		if !validKeys[key] {
-			p.errors = append(p.errors, fmt.Sprintf("invalid project field key '%s' at %d:%d", key, p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: fmt.Sprintf("invalid project field key '%s'", key),
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			p.nextToken()
 			continue
 		}
@@ -141,7 +169,11 @@ func (p *Parser) parseProjectDecl() ast.Stmt {
 		}
 		fields = append(fields, ast.ProjectField{Key: key, Value: value})
 		if !p.curTokenIs(token.SEMICOLON) {
-			p.errors = append(p.errors, fmt.Sprintf("expected ';' at %d:%d", p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "expected ';'",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return nil
 		}
 		p.nextToken() // advance to next field or }

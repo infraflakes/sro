@@ -24,7 +24,7 @@ func (r *Runner) RunParWithWriter(name string, writer io.Writer) error {
 		writer = os.Stdout
 	}
 	if !r.SuppressHeaders {
-		fmt.Fprintf(writer, "par %s\n", par.Name)
+		_, _ = fmt.Fprintf(writer, "par %s\n", par.Name)
 	}
 
 	var wg sync.WaitGroup

@@ -6,7 +6,7 @@ type Node interface {
 }
 
 type Program struct {
-	Statements []Node
+	Statements []Stmt
 }
 
 func (p *Program) TokenLiteral() string {

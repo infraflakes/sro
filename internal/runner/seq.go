@@ -21,13 +21,9 @@ func (r *Runner) RunSeqWithWriter(name string, writer io.Writer) error {
 		writer = os.Stdout
 	}
 	if !r.SuppressHeaders {
-		fmt.Fprintf(writer, "seq %s\n", seq.Name)
+		_, _ = fmt.Fprintf(writer, "seq %s\n", seq.Name)
 	}
 	return r.executeSeqWithWriter(seq, writer)
-}
-
-func (r *Runner) executeSeq(seq *ast.SeqDecl) error {
-	return r.executeSeqWithWriter(seq, r.Writer)
 }
 
 func (r *Runner) executeSeqWithWriter(seq *ast.SeqDecl, writer io.Writer) error {

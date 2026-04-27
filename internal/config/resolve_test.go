@@ -112,17 +112,21 @@ func TestResolveUseDisallowSanctuaryAndPr(t *testing.T) {
 
 func TestResolveUseDisallowPr(t *testing.T) {
 	// C7: use file containing pr block
-	dir := t.TempDir()
+	sanctuary := t.TempDir()
+	projDir := filepath.Join(sanctuary, "test")
+	if err := os.MkdirAll(projDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
-	// Create a use file with pr block (should be disallowed)
-	useFile := filepath.Join(dir, "bad-use.sro")
+	// Write the use file where ResolveUse will find it
+	useFile := filepath.Join(projDir, "bad-use.sro")
 	useContent := "shell = `bash`; pr x { url = `u`; dir = `d`; }"
 	if err := os.WriteFile(useFile, []byte(useContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	mainFile := filepath.Join(dir, "main.sro")
-	mainContent := fmt.Sprintf("shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; use = `%s`; }\n", filepath.Base(useFile))
+	mainContent := fmt.Sprintf("shell = `bash`;\nsanctuary = `%s`;\npr test { url = `http://example.com`; dir = `test`; use = `bad-use.sro`; }\n", sanctuary)
+	mainFile := filepath.Join(sanctuary, "main.sro")
 	if err := os.WriteFile(mainFile, []byte(mainContent), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -136,8 +140,30 @@ func TestResolveUseDisallowPr(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for pr in use file")
 	}
-	// The error could be about the use file not being found or about pr being disallowed
-	if !strings.Contains(err.Error(), "cannot declare projects") && !strings.Contains(err.Error(), "use file not found") {
-		t.Fatalf("unexpected error: %v", err)
+	// Assert ONLY the expected error — not "use file not found"
+	if !strings.Contains(err.Error(), "cannot declare projects") {
+		t.Fatalf("expected 'cannot declare projects' error, got: %v", err)
+	}
+}
+
+func TestResolveUseSkipsSyncIgnore(t *testing.T) {
+	dir := t.TempDir()
+	mainFile := filepath.Join(dir, "main.sro")
+	content := fmt.Sprintf(
+		"shell = `bash`;\nsanctuary = `%s`;\npr test { url = `http://example.com`; dir = `test`; sync = `ignore`; use = `use.sro`; }\n",
+		dir,
+	)
+	if err := os.WriteFile(mainFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(mainFile)
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+
+	// ResolveUse should NOT error — sync=ignore means we skip the use file resolution
+	if err := ResolveUse(cfg); err != nil {
+		t.Fatalf("ResolveUse should skip sync=ignore projects, got error: %v", err)
 	}
 }

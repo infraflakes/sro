@@ -38,7 +38,9 @@ func runPar(name string) {
 
 	// Fallback to plain stdout if --no-tui is set
 	if noTui {
-		r := runner.New(cfg)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		r := runner.NewWithContext(cfg, ctx)
 		if err := r.RunPar(name); err != nil {
 			fmt.Fprintf(os.Stderr, "par error: %v\n", err)
 			os.Exit(1)
@@ -58,8 +60,10 @@ func runPar(name string) {
 	for _, stmt := range par.Stmts {
 		label := labelForStmt(stmt)
 		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}), vt.MockOptColors(1<<24))
-		vterm.Start()
-		vterm.Write([]byte("\x1b[20h")) // enable newline mode: LF implies CR
+		if err := vterm.Start(); err != nil {
+			continue
+		}
+		_, _ = vterm.Write([]byte("\x1b[20h")) // enable newline mode: LF implies CR
 		model.Tasks = append(model.Tasks, tui.Task{
 			Label:    label,
 			Status:   "pending",

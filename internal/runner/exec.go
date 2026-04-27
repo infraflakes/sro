@@ -51,7 +51,7 @@ func (ctx *execContext) execLog(s *ast.LogStmt) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	fmt.Fprintf(writer, "%s\033[38;2;255;203;107mlog  %s\033[0m\n", ctx.indent(), msg)
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;255;203;107mlog  %s\033[0m\n", ctx.indent(), msg)
 	return nil
 }
 
@@ -64,9 +64,9 @@ func (ctx *execContext) execExec(s *ast.ExecStmt) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	fmt.Fprintf(writer, "%s\033[38;2;91;156;246mexec %s\033[0m\n", ctx.indent(), cmdStr)
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;91;156;246mexec %s\033[0m\n", ctx.indent(), cmdStr)
 
-	cmd := exec.Command(ctx.cfg.Shell, "-c", cmdStr)
+	cmd := exec.CommandContext(ctx.ctx, ctx.cfg.Shell, "-c", cmdStr)
 	cmd.Dir = ctx.workDir
 	cmd.Env = ctx.buildEnv()
 	indented := newIndentWriter(writer, ctx.stdoutIndent())
@@ -97,7 +97,7 @@ func (ctx *execContext) execCd(s *ast.CdStmt) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	fmt.Fprintf(writer, "%s\033[38;2;255;203;107mcd   %s\033[0m\n", ctx.indent(), s.Arg)
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;255;203;107mcd   %s\033[0m\n", ctx.indent(), s.Arg)
 	return nil
 }
 
@@ -135,9 +135,14 @@ func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	fmt.Fprintf(writer, "%s\033[38;2;199;146;234menv  %s\033[0m\n", ctx.indent(), s.Pairs[0].Key)
+	if len(s.Pairs) > 0 {
+		_, _ = fmt.Fprintf(writer, "%s\033[38;2;199;146;234menv  %s\033[0m\n", ctx.indent(), s.Pairs[0].Key)
+	} else {
+		_, _ = fmt.Fprintf(writer, "%s\033[38;2;199;146;234menv\033[0m\n", ctx.indent())
+	}
 
 	ctx.envStack = append(ctx.envStack, layer)
+	ctx.envDirty = true
 
 	// Snapshot vars before body so local vars don't leak
 	savedVars := make(map[string]string, len(ctx.vars))
@@ -147,5 +152,6 @@ func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 
 	ctx.vars = savedVars
 	ctx.envStack = ctx.envStack[:len(ctx.envStack)-1]
+	ctx.envDirty = true
 	return err
 }

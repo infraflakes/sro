@@ -44,7 +44,7 @@ func Run(model *Model) error {
 				case tcell.KeyEnter:
 					if model.Selected >= 0 && model.Selected < len(model.Tasks) {
 						// Don't allow expansion of pending tasks in seq mode
-						if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+						if model.Type != "seq" || model.Tasks[model.Selected].Status != "pending" {
 							model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
 						}
 					}
@@ -52,7 +52,7 @@ func Run(model *Model) error {
 					if ev.Str() == " " {
 						if model.Selected >= 0 && model.Selected < len(model.Tasks) {
 							// Don't allow expansion of pending tasks in seq mode
-							if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+							if model.Type != "seq" || model.Tasks[model.Selected].Status != "pending" {
 								model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
 							}
 						}
@@ -70,24 +70,64 @@ func Run(model *Model) error {
 		// Adjust scroll offset to keep selected task visible
 		_, h := screen.Size()
 		headerHeight := 4
-		footerHeight := 3
+		footerHeight := 4
+
+		// Calculate the rendered height of each task (1 row collapsed, 1 + panelHeight expanded)
+		taskHeights := make([]int, len(model.Tasks))
+		for i, task := range model.Tasks {
+			taskHeights[i] = 1 // collapsed row
+			if task.Expanded && task.VTerm != nil {
+				cursorPos := task.VTerm.Pos()
+				actualLines := int(cursorPos.Y) + 1
+				panelHeight := min(actualLines, 15)
+				panelHeight = max(panelHeight, min(actualLines, 3))
+				if actualLines > panelHeight {
+					panelHeight++ // pruned indicator row
+				}
+				taskHeights[i] += panelHeight + 1 // +1 for spacing after panel
+			}
+		}
+
 		visibleHeight := h - headerHeight - footerHeight
+
+		// Calculate the Y position of the selected task relative to ScrollOffset
+		yBefore := 0
+		for i := model.ScrollOffset; i < model.Selected; i++ {
+			if i < len(taskHeights) {
+				yBefore += taskHeights[i]
+			}
+		}
+
+		// If selected task is above the viewport, scroll up
 		if model.Selected < model.ScrollOffset {
 			model.ScrollOffset = model.Selected
 		}
-		if model.Selected >= model.ScrollOffset+visibleHeight {
-			model.ScrollOffset = model.Selected - visibleHeight + 1
+
+		// If selected task (including its expanded panel) is below the viewport, scroll down
+		selectedHeight := 0
+		if model.Selected < len(taskHeights) {
+			selectedHeight = taskHeights[model.Selected]
+		}
+		if yBefore+selectedHeight > visibleHeight {
+			// Scroll so the selected task's bottom edge is visible
+			// Walk backwards from Selected to find the right ScrollOffset
+			remaining := visibleHeight
+			model.ScrollOffset = model.Selected
+			for model.ScrollOffset > 0 {
+				remaining -= taskHeights[model.ScrollOffset]
+				if remaining <= 0 {
+					break
+				}
+				model.ScrollOffset--
+			}
+			// Ensure we don't scroll past the selected task
+			if model.ScrollOffset > model.Selected {
+				model.ScrollOffset = model.Selected
+			}
 		}
 
 		// Update spinner in model status
-		if model.Status == "running" {
-			// Update spinner for running tasks
-			for i := range model.Tasks {
-				if model.Tasks[i].Status == "running" {
-					// Spinner will be rendered in render()
-				}
-			}
-		}
+		// Spinner will be rendered in render()
 
 		Render(screen, model, spinnerIdx)
 		screen.Show()
@@ -120,7 +160,7 @@ func Run(model *Model) error {
 	// Stop all vterms on exit
 	for i := range model.Tasks {
 		if model.Tasks[i].VTerm != nil {
-			model.Tasks[i].VTerm.Stop()
+			_ = model.Tasks[i].VTerm.Stop()
 		}
 	}
 
@@ -166,7 +206,7 @@ func RunWithContext(ctx context.Context, model *Model) error {
 				case tcell.KeyEnter:
 					if model.Selected >= 0 && model.Selected < len(model.Tasks) {
 						// Don't allow expansion of pending tasks in seq mode
-						if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+						if model.Type != "seq" || model.Tasks[model.Selected].Status != "pending" {
 							model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
 						}
 					}
@@ -174,7 +214,7 @@ func RunWithContext(ctx context.Context, model *Model) error {
 					if ev.Str() == " " {
 						if model.Selected >= 0 && model.Selected < len(model.Tasks) {
 							// Don't allow expansion of pending tasks in seq mode
-							if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+							if model.Type != "seq" || model.Tasks[model.Selected].Status != "pending" {
 								model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
 							}
 						}
@@ -192,24 +232,64 @@ func RunWithContext(ctx context.Context, model *Model) error {
 		// Adjust scroll offset to keep selected task visible
 		_, h := screen.Size()
 		headerHeight := 4
-		footerHeight := 3
+		footerHeight := 4
+
+		// Calculate the rendered height of each task (1 row collapsed, 1 + panelHeight expanded)
+		taskHeights := make([]int, len(model.Tasks))
+		for i, task := range model.Tasks {
+			taskHeights[i] = 1 // collapsed row
+			if task.Expanded && task.VTerm != nil {
+				cursorPos := task.VTerm.Pos()
+				actualLines := int(cursorPos.Y) + 1
+				panelHeight := min(actualLines, 15)
+				panelHeight = max(panelHeight, min(actualLines, 3))
+				if actualLines > panelHeight {
+					panelHeight++ // pruned indicator row
+				}
+				taskHeights[i] += panelHeight + 1 // +1 for spacing after panel
+			}
+		}
+
 		visibleHeight := h - headerHeight - footerHeight
+
+		// Calculate the Y position of the selected task relative to ScrollOffset
+		yBefore := 0
+		for i := model.ScrollOffset; i < model.Selected; i++ {
+			if i < len(taskHeights) {
+				yBefore += taskHeights[i]
+			}
+		}
+
+		// If selected task is above the viewport, scroll up
 		if model.Selected < model.ScrollOffset {
 			model.ScrollOffset = model.Selected
 		}
-		if model.Selected >= model.ScrollOffset+visibleHeight {
-			model.ScrollOffset = model.Selected - visibleHeight + 1
+
+		// If selected task (including its expanded panel) is below the viewport, scroll down
+		selectedHeight := 0
+		if model.Selected < len(taskHeights) {
+			selectedHeight = taskHeights[model.Selected]
+		}
+		if yBefore+selectedHeight > visibleHeight {
+			// Scroll so the selected task's bottom edge is visible
+			// Walk backwards from Selected to find the right ScrollOffset
+			remaining := visibleHeight
+			model.ScrollOffset = model.Selected
+			for model.ScrollOffset > 0 {
+				remaining -= taskHeights[model.ScrollOffset]
+				if remaining <= 0 {
+					break
+				}
+				model.ScrollOffset--
+			}
+			// Ensure we don't scroll past the selected task
+			if model.ScrollOffset > model.Selected {
+				model.ScrollOffset = model.Selected
+			}
 		}
 
 		// Update spinner in model status
-		if model.Status == "running" {
-			// Update spinner for running tasks
-			for i := range model.Tasks {
-				if model.Tasks[i].Status == "running" {
-					// Spinner will be rendered in render()
-				}
-			}
-		}
+		// Spinner will be rendered in render()
 
 		Render(screen, model, spinnerIdx)
 		screen.Show()
@@ -242,7 +322,7 @@ func RunWithContext(ctx context.Context, model *Model) error {
 	// Stop all vterms on exit
 	for i := range model.Tasks {
 		if model.Tasks[i].VTerm != nil {
-			model.Tasks[i].VTerm.Stop()
+			_ = model.Tasks[i].VTerm.Stop()
 		}
 	}
 

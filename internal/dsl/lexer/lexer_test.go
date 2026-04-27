@@ -6,6 +6,29 @@ import (
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
+func FuzzLexer(f *testing.F) {
+	f.Add("var string x = `hello`;")
+	f.Add("sanctuary = `/tmp`;")
+	f.Add("fn test { log(`hello`); }")
+	f.Add("pr foo { url = `http://example.com`; dir = `foo`; }")
+	f.Add("seq myseq { fn test(pr.foo); }")
+	f.Add("par mypar { fn test(pr.foo); }")
+	f.Add("env { FOO = `bar`; } { exec(`echo $FOO`); }")
+	f.Add("$var")
+	f.Add("`hello ${world}`")
+	f.Add("# comment\nvar x = `test`;")
+
+	f.Fuzz(func(t *testing.T, input string) {
+		l := New(input)
+		for {
+			tok := l.NextToken()
+			if tok.Type == token.EOF || tok.Type == token.ILLEGAL {
+				break
+			}
+		}
+	})
+}
+
 func TestNextToken(t *testing.T) {
 	tests := []struct {
 		input    string

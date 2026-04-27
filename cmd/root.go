@@ -12,9 +12,22 @@ import (
 var configPath string
 var noTui bool
 
+var version string
+
 var rootCmd = &cobra.Command{
 	Use:   "sro",
 	Short: "SRO - Serein Repository Orchestrator",
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number",
+	Run: func(cmd *cobra.Command, args []string) {
+		if version == "" {
+			version = "dev"
+		}
+		fmt.Println(version)
+	},
 }
 
 func init() {
@@ -25,7 +38,7 @@ func init() {
 
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", defaultConfig, "path to config file")
 	rootCmd.PersistentFlags().BoolVar(&noTui, "no-tui", false, "disable TUI and use plain stdout")
-	rootCmd.AddCommand(syncCmd, seqCmd, parCmd, validateCmd)
+	rootCmd.AddCommand(syncCmd, seqCmd, parCmd, validateCmd, versionCmd)
 }
 
 func Execute() {

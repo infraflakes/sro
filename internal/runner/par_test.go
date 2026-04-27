@@ -9,7 +9,7 @@ import (
 )
 
 func TestParContinuesOnFailure(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 
 	// Function that fails
 	failFn := newFnDecl("fail", []ast.FnStmt{
@@ -45,7 +45,7 @@ func TestParContinuesOnFailure(t *testing.T) {
 }
 
 func TestParCallsSeq(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	logFn := newFnDecl("logfn", []ast.FnStmt{
 		newLogStmt(newBacktickLit("par-seq-log")),
 	})
@@ -79,7 +79,7 @@ func TestParCallsSeq(t *testing.T) {
 }
 
 func TestRunParUnknown(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	r := New(cfg)
 	err := r.RunPar("nonexistent")
 	if err == nil || !strings.Contains(err.Error(), "unknown par") {

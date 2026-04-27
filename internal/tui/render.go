@@ -12,35 +12,30 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	w, h := screen.Size()
 	screen.Fill(' ', tcell.StyleDefault)
 
-	// Calculate header height
-	headerHeight := 4 // header + 2 spacing lines
-	footerHeight := 1 // footer only
-	visibleHeight := h - headerHeight - footerHeight
-
-	// Calculate which tasks are visible based on ScrollOffset
-	startTask := model.ScrollOffset
-	endTask := min(startTask+visibleHeight, len(model.Tasks))
+	// Fixed footer height including its separator and spacing
+	footerHeight := 4
+	footerY := h - footerHeight // first row reserved for footer
 
 	y := 0
 
-	// Header
+	// Header (includes its own separator and spacing)
 	renderHeader(screen, model, w, &y)
-	y++
 
-	// Add vertical spacing between header and tasks
-	for range 2 {
-		y++
-	}
-
-	// Task rows (only visible ones)
-	for i := startTask; i < endTask; i++ {
+	// Task rows — render until we run out of screen space
+	for i := model.ScrollOffset; i < len(model.Tasks); i++ {
+		if y >= footerY {
+			break
+		}
 		renderTaskRow(screen, model, i, w, &y, spinnerIdx)
+		if y >= footerY {
+			break // task row itself hit the boundary
+		}
 		if model.Tasks[i].Expanded {
-			renderExpandedPanel(screen, &model.Tasks[i], w, &y)
+			renderExpandedPanel(screen, &model.Tasks[i], w, &y, footerY)
 		}
 	}
 
-	// Footer
+	// Footer (includes its own separator and spacing)
 	renderFooter(screen, model, w, h, spinnerIdx)
 }
 
@@ -59,7 +54,7 @@ func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
 
 	badgeText := fmt.Sprintf(" %s ", model.Type)
 	for i, r := range badgeText {
-		style := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(badgeColor)
+		style := tcell.StyleDefault.Foreground(color.Black).Background(badgeColor)
 		screen.SetContent(i, *y, r, nil, style)
 	}
 
@@ -77,24 +72,16 @@ func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
 	}
 
 	*y++
-}
 
-func renderTypeNote(screen tcell.Screen, model *Model, w int, y *int) {
-	var note string
-	switch model.Type {
-	case "seq":
-		note = "seq — sequential · fail-fast · one active at a time"
-	case "par":
-		note = "par — parallel · all tasks run simultaneously"
-	case "sync":
-		note = "sync — clone/sync project repositories"
-	default:
-		note = ""
+	// Horizontal separator line
+	for x := range w {
+		screen.SetContent(x, *y, '─', nil, tcell.StyleDefault.Foreground(Muted))
 	}
+	*y++
 
-	for i, r := range note {
-		style := tcell.StyleDefault.Foreground(Muted)
-		screen.SetContent(i, *y, r, nil, style)
+	// Vertical spacing (2 lines)
+	for range 2 {
+		*y++
 	}
 }
 
@@ -149,7 +136,7 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 	}
 
 	// Expand arrow (hide for pending tasks in seq mode)
-	if !(model.Type == "seq" && task.Status == "pending") {
+	if model.Type != "seq" || task.Status != "pending" {
 		arrow := '▶'
 		if task.Expanded {
 			arrow = '▼'
@@ -160,39 +147,53 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 	*y++
 }
 
-func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
-	_, termH := screen.Size()
-	availableHeight := termH - *y - 3 // leave room for footer and remaining tasks
+func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int, maxY int) {
 	panelWidth := w - 4
+
+	const minPanelHeight = 3 // never prune below this, even if terminal is tiny
+	const maxPanelCap = 15   // max lines before pruning kicks in
 
 	// Blit cells from vterm
 	if task.VTerm != nil {
 		cursorPos := task.VTerm.Pos()
 		actualLines := int(cursorPos.Y) + 1 // cursor Y is 0-indexed
 
-		// Cap at a max threshold, but don't exceed available space
-		maxPanelHeight := min(15, max(1, availableHeight))
-		panelHeight := min(actualLines, maxPanelHeight)
+		// Available rows between current y and the footer boundary
+		// Reserve 1 row for spacing after panel
+		availableRows := maxY - *y - 1
+		if availableRows < 1 {
+			return // no room at all
+		}
 
-		// Number of pruned (hidden) lines
+		// Panel height is based on actual content, capped at maxPanelCap,
+		// but NEVER goes below minPanelHeight (prevents total pruning)
+		panelHeight := min(actualLines, maxPanelCap)
+		panelHeight = max(panelHeight, min(actualLines, minPanelHeight))
+		panelHeight = min(panelHeight, availableRows) // clamp to available space
+
 		prunedCount := actualLines - panelHeight
 		startRow := max(actualLines-panelHeight, 0)
 
-		// Pruned indicator (only if lines were hidden)
+		// Pruned indicator (takes 1 row from the panel budget)
 		if prunedCount > 0 {
-			prunedText := fmt.Sprintf(" ↑ %d lines hidden ", prunedCount)
-			for i, r := range prunedText {
-				screen.SetContent(2+i, *y, r, nil, tcell.StyleDefault.Foreground(Dim))
+			if *y < maxY {
+				prunedText := fmt.Sprintf(" ↑ %d lines hidden ", prunedCount)
+				for i, r := range prunedText {
+					screen.SetContent(2+i, *y, r, nil, tcell.StyleDefault.Foreground(Dim))
+				}
 			}
 			*y++
-			// Reduce panelHeight by 1 to account for the pruned indicator row
 			panelHeight = max(1, panelHeight-1)
 			startRow = max(actualLines-panelHeight, 0)
 		}
 
+		// Blit cells — hard stop at maxY
 		be := task.VTerm.Backend()
 		vtSize := be.GetSize()
 		for row := 0; row < panelHeight && vt.Row(startRow+row) < vtSize.Y; row++ {
+			if *y >= maxY {
+				break // STOP before the footer — don't just skip, actually break
+			}
 			for col := vt.Col(0); col < vtSize.X && int(col) < panelWidth; col++ {
 				cell := be.GetCell(vt.Coord{X: col, Y: vt.Row(startRow + row)})
 				if cell.C != "" {
@@ -206,20 +207,29 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 			*y++
 		}
 	} else {
-		// No vterm — just skip 1 line
-		*y++
+		if *y < maxY {
+			*y++
+		}
 	}
 
-	*y++ // spacing after panel
+	// Spacing after panel — only if there's room
+	if *y < maxY {
+		*y++
+	}
 }
 
 func renderFooter(screen tcell.Screen, model *Model, w, h int, spinnerIdx int) {
-	y := h - 3
+	footerStart := h - 4 // footer zone is 4 rows tall
 
-	// Clear footer row
-	for x := range w {
-		screen.SetContent(x, y, ' ', nil, tcell.StyleDefault)
+	// Clear all footer rows
+	for row := footerStart; row < h; row++ {
+		for x := range w {
+			screen.SetContent(x, row, ' ', nil, tcell.StyleDefault)
+		}
 	}
+
+	// Start from bottom and work up
+	y := h - 1
 
 	var okCount, runningCount, pendingCount, failedCount int
 	for _, task := range model.Tasks {
@@ -251,7 +261,15 @@ func renderFooter(screen tcell.Screen, model *Model, w, h int, spinnerIdx int) {
 		x += 2
 	}
 	if failedCount > 0 {
-		x += drawText(screen, x, y, fmt.Sprintf("✗ %d failed", failedCount), Failed, color.Default)
+		drawText(screen, x, y, fmt.Sprintf("✗ %d failed", failedCount), Failed, color.Default)
+	}
+
+	// Move up for vertical spacing (2 lines)
+	y -= 2
+
+	// Horizontal separator line
+	for x := range w {
+		screen.SetContent(x, y, '─', nil, tcell.StyleDefault.Foreground(Muted))
 	}
 }
 

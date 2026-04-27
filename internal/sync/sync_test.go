@@ -1,8 +1,10 @@
 package sync
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,5 +164,66 @@ func TestRun_WarnUnknownRepo(t *testing.T) {
 	}
 	if err := Run(cfg); err != nil {
 		t.Fatalf("Run error: %v", err)
+	}
+}
+
+func TestWarnUnknownReposOutput(t *testing.T) {
+	sanctuary := t.TempDir()
+	unknownDir := filepath.Join(sanctuary, "unknown-repo")
+	if err := os.MkdirAll(unknownDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := git.PlainInit(unknownDir, false); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.Config{
+		Sanctuary: sanctuary,
+		Projects:  map[string]*config.Project{},
+	}
+
+	var buf bytes.Buffer
+	warnUnknownReposWithWriter(cfg, &buf)
+
+	output := buf.String()
+	if !strings.Contains(output, "warn") {
+		t.Fatalf("expected output to contain 'warn', got: %q", output)
+	}
+	if !strings.Contains(output, "unknown-repo") {
+		t.Fatalf("expected output to contain 'unknown-repo', got: %q", output)
+	}
+	if !strings.Contains(output, "git repo not in your config") {
+		t.Fatalf("expected output to contain 'git repo not in your config', got: %q", output)
+	}
+}
+
+func TestRun_CloneFailure(t *testing.T) {
+	sanctuary := t.TempDir()
+	cfg := &config.Config{
+		Sanctuary: sanctuary,
+		Projects: map[string]*config.Project{
+			"bad": {Name: "bad", URL: "http://invalid.invalid/no.git", Dir: "bad", Sync: "clone"},
+		},
+	}
+	err := Run(cfg)
+	if err == nil {
+		t.Fatal("expected clone error")
+	}
+	if !strings.Contains(err.Error(), "failed to clone bad") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRun_SanctuaryPermissionDenied(t *testing.T) {
+	cfg := &config.Config{
+		Sanctuary: "/proc/fake/impossible", // unwritable path
+		Projects:  map[string]*config.Project{},
+	}
+	err := Run(cfg)
+	if err == nil {
+		t.Fatal("expected sanctuary creation error")
+	}
+	if !strings.Contains(err.Error(), "cannot create sanctuary") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
