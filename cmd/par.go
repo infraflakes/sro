@@ -36,18 +36,6 @@ func runPar(name string) {
 		os.Exit(1)
 	}
 
-	// Fallback to plain stdout if --no-tui is set
-	if noTui {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		r := runner.NewWithContext(cfg, ctx)
-		if err := r.RunPar(name); err != nil {
-			fmt.Fprintf(os.Stderr, "par error: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
 	model := &tui.Model{
 		Type:         "par",
 		Name:         name,

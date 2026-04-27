@@ -26,20 +26,6 @@ var syncCmd = &cobra.Command{
 func runSync() {
 	cfg := loadConfig()
 
-	// Fallback to plain stdout if --no-tui is set
-	if noTui {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		fmt.Printf("sanctuary: %s\n", cfg.Sanctuary)
-		fmt.Printf("projects:  %d\n\n", len(cfg.Projects))
-		if err := srSync.RunWithContext(ctx, cfg, os.Stdout); err != nil {
-			fmt.Fprintf(os.Stderr, "sync error: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("done")
-		return
-	}
-
 	// Ensure sanctuary directory exists before launching goroutines
 	if err := os.MkdirAll(cfg.Sanctuary, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot create sanctuary: %v\n", err)

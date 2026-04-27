@@ -35,18 +35,6 @@ func runSeq(name string) {
 		os.Exit(1)
 	}
 
-	// Fallback to plain stdout if --no-tui is set
-	if noTui {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		r := runner.NewWithContext(cfg, ctx)
-		if err := r.RunSeq(name); err != nil {
-			fmt.Fprintf(os.Stderr, "seq error: %v\n", err)
-			os.Exit(1)
-		}
-		return
-	}
-
 	model := &tui.Model{
 		Type:         "seq",
 		Name:         name,
