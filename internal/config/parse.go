@@ -32,7 +32,11 @@ func parseRecursive(filePath string, visited map[string]bool) ([]*ast.Program, e
 	prog := p.ParseProgram()
 
 	if len(p.Errors()) > 0 {
-		return nil, fmt.Errorf("parse errors in %s:\n%s", absPath, strings.Join(p.Errors(), "\n"))
+		errStrs := make([]string, len(p.Errors()))
+		for i, err := range p.Errors() {
+			errStrs[i] = err.Error()
+		}
+		return nil, fmt.Errorf("parse errors in %s:\n%s", absPath, strings.Join(errStrs, "\n"))
 	}
 
 	results := []*ast.Program{}

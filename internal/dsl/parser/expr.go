@@ -9,7 +9,7 @@ import (
 )
 
 // parseBacktickParts splits raw backtick content into TemplateParts for interpolation.
-func parseBacktickParts(raw string, line, col int) ([]ast.TemplatePart, error) {
+func parseBacktickParts(raw string) ([]ast.TemplatePart, error) {
 	var parts []ast.TemplatePart
 	i := 0
 	for i < len(raw) {
@@ -28,11 +28,11 @@ func parseBacktickParts(raw string, line, col int) ([]ast.TemplatePart, error) {
 		i += idx + 2 // skip past ${
 		end := strings.Index(raw[i:], "}")
 		if end == -1 {
-			return nil, fmt.Errorf("unterminated ${} at %d:%d", line, col)
+			return nil, fmt.Errorf("unterminated ${}")
 		}
 		name := raw[i : i+end]
 		if name == "" {
-			return nil, fmt.Errorf("empty ${} at %d:%d", line, col)
+			return nil, fmt.Errorf("empty ${}")
 		}
 		parts = append(parts, ast.TemplatePart{IsVar: true, Value: name})
 		i += end + 1 // skip past }
@@ -48,9 +48,13 @@ func (p *Parser) parseExpr() ast.Expr {
 	switch p.curToken.Type {
 	case token.BACKTICK:
 		tok := p.curToken
-		parts, err := parseBacktickParts(p.curToken.Literal, p.curToken.Line, p.curToken.Col)
+		parts, err := parseBacktickParts(p.curToken.Literal)
 		if err != nil {
-			p.errors = append(p.errors, err.Error())
+			p.errors = append(p.errors, ParseError{
+				Message: err.Error(),
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return nil
 		}
 		p.nextToken() // consume BACKTICK
@@ -58,14 +62,22 @@ func (p *Parser) parseExpr() ast.Expr {
 	case token.DOLLAR:
 		p.nextToken()
 		if p.curToken.Type != token.IDENT {
-			p.errors = append(p.errors, fmt.Sprintf("expected identifier after $ at %d:%d", p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "expected identifier after $",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return nil
 		}
 		tok := p.curToken
 		p.nextToken() // consume IDENT
 		return &ast.VarRef{Token: tok, Name: tok.Literal}
 	default:
-		p.errors = append(p.errors, fmt.Sprintf("expected backtick literal or variable reference at %d:%d", p.curToken.Line, p.curToken.Col))
+		p.errors = append(p.errors, ParseError{
+			Message: "expected backtick literal or variable reference",
+			Line:    p.curToken.Line,
+			Col:     p.curToken.Col,
+		})
 		return nil
 	}
 }

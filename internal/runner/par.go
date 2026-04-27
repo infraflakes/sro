@@ -2,6 +2,8 @@ package runner
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 	"sync"
 
@@ -9,12 +11,21 @@ import (
 )
 
 func (r *Runner) RunPar(name string) error {
+	return r.RunParWithWriter(name, r.Writer)
+}
+
+func (r *Runner) RunParWithWriter(name string, writer io.Writer) error {
 	par, ok := r.cfg.Pars[name]
 	if !ok {
 		return fmt.Errorf("unknown par: %s", name)
 	}
 
-	fmt.Printf("par %s\n", par.Name)
+	if writer == nil {
+		writer = os.Stdout
+	}
+	if !r.SuppressHeaders {
+		_, _ = fmt.Fprintf(writer, "par %s\n", par.Name)
+	}
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -26,6 +37,9 @@ func (r *Runner) RunPar(name string) error {
 			wg.Add(1)
 			go func(call *ast.FnCall) {
 				defer wg.Done()
+				// Create a new runner per goroutine to avoid data race on Writer field
+				r := r.clone()
+				r.Writer = writer
 				if err := r.executeFnCall(call); err != nil {
 					mu.Lock()
 					errs = append(errs, fmt.Errorf("%s(pr.%s): %w", call.FnName, call.ProjectName, err))
@@ -43,7 +57,9 @@ func (r *Runner) RunPar(name string) error {
 					mu.Unlock()
 					return
 				}
-				if err := r.executeSeq(refSeq); err != nil {
+				// Create a new runner per goroutine to avoid data race on Writer field
+				r := r.clone()
+				if err := r.executeSeqWithWriter(refSeq, writer); err != nil {
 					mu.Lock()
 					errs = append(errs, fmt.Errorf("seq.%s: %w", ref.SeqName, err))
 					mu.Unlock()

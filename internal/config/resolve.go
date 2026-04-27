@@ -16,6 +16,11 @@ func ResolveUse(cfg *Config) error {
 		if proj.Use == "" {
 			continue
 		}
+		// Skip projects with sync=ignore — they may not be cloned locally,
+		// so their use file won't exist on disk
+		if proj.Sync == "ignore" {
+			continue
+		}
 		usePath := filepath.Join(cfg.Sanctuary, proj.Dir, proj.Use)
 
 		// Check if use file exists

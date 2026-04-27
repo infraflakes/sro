@@ -1,8 +1,10 @@
 package runner
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -10,30 +12,32 @@ import (
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
+// stripANSI removes ANSI escape codes from a string
+func stripANSI(s string) string {
+	ansi := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	return ansi.ReplaceAllString(s, "")
+}
+
 func TestExecLog(t *testing.T) {
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	stmt := newLogStmt(newBacktickLit("hello world"))
 
-	out, err := captureOutput(func() {
-		err := ctx.execLog(stmt)
-		if err != nil {
-			t.Fatalf("execLog error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execLog(stmt); err != nil {
+		t.Fatalf("execLog error: %v", err)
 	}
-	expected := "hello world\n"
-	if out != expected {
-		t.Fatalf("log output: got %q, want %q", out, expected)
+	// Output now includes "log  " prefix with ANSI coloring
+	expected := "log  hello world\n"
+	if stripANSI(buf.String()) != expected {
+		t.Fatalf("log output: got %q, want %q", stripANSI(buf.String()), expected)
 	}
 }
 
 func TestExecVarDecl(t *testing.T) {
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], nil)
 
 	// Declare var x
 	stmt1 := newVarDecl("x", "string", newBacktickLit("value1"))
@@ -61,17 +65,14 @@ func TestExecVarDecl(t *testing.T) {
 }
 
 func TestExecCd(t *testing.T) {
-	cfg := testConfig()
-	// Use a temporary sanctuary base
-	tempBase := t.TempDir()
-	cfg.Sanctuary = tempBase
+	cfg := testConfig(t)
 	// Project dir relative to sanctuary
 	cfg.Projects["testproj"].Dir = "testproj"
-	projDir := filepath.Join(tempBase, "testproj")
+	projDir := filepath.Join(cfg.Sanctuary, "testproj")
 	if err := os.MkdirAll(projDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], nil)
 	if ctx.workDir != projDir {
 		t.Fatalf("initial workdir wrong: got %s, want %s", ctx.workDir, projDir)
 	}
@@ -100,8 +101,9 @@ func TestExecCd(t *testing.T) {
 }
 
 func TestExecEnvBlock(t *testing.T) {
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
@@ -124,16 +126,11 @@ func TestExecEnvBlock(t *testing.T) {
 	}
 	block := newEnvBlock([]ast.EnvPair{{Key: "FOO", Value: newBacktickLit("bar")}}, innerBody)
 
-	out, err := captureOutput(func() {
-		if err := ctx.execEnvBlock(block); err != nil {
-			t.Fatalf("execEnvBlock error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execEnvBlock(block); err != nil {
+		t.Fatalf("execEnvBlock error: %v", err)
 	}
-	if !strings.Contains(out, "FOO=bar") {
-		t.Fatalf("expected output to contain 'FOO=bar', got %q", out)
+	if !strings.Contains(buf.String(), "FOO=bar") {
+		t.Fatalf("expected output to contain 'FOO=bar', got %q", buf.String())
 	}
 
 	// After block, FOO should be gone from env
@@ -146,8 +143,9 @@ func TestExecEnvBlock(t *testing.T) {
 }
 
 func TestExecEnvBlockNestedOverride(t *testing.T) {
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
@@ -157,44 +155,42 @@ func TestExecEnvBlockNestedOverride(t *testing.T) {
 	outerBody := []ast.FnStmt{
 		newEnvBlock([]ast.EnvPair{{Key: "X", Value: newBacktickLit("1")}}, []ast.FnStmt{
 			newLogStmt(newBacktickLit("outer-start")),
-			// Print env to capture X
+			// Echo X value directly
 			newExecStmt(
-				newBacktickLit("env"),
+				newBacktickLit("echo $X"),
 			),
 			newEnvBlock([]ast.EnvPair{{Key: "X", Value: newBacktickLit("2")}}, []ast.FnStmt{
 				newLogStmt(newBacktickLit("inner")),
-				// Print env to capture X
+				// Echo X value directly
 				newExecStmt(
-					newBacktickLit("env"),
+					newBacktickLit("echo $X"),
 				),
 			}),
 			// After inner block, X should be back to 1
 			newExecStmt(
-				newBacktickLit("env"),
+				newBacktickLit("echo $X"),
 			),
 			newLogStmt(newBacktickLit("outer-end")),
 		}),
 	}
 
-	out, err := captureOutput(func() {
-		if err := ctx.execFnBody(outerBody); err != nil {
-			t.Fatalf("execFnBody error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execFnBody(outerBody); err != nil {
+		t.Fatalf("execFnBody error: %v", err)
 	}
 
-	// Parse output: collect X values from lines "X=..."
-	lines := strings.Split(strings.TrimSpace(out), "\n")
+	// Parse output: collect X values from lines containing just the value
+	// Strip ANSI codes first
+	cleanOut := stripANSI(buf.String())
+	lines := strings.Split(strings.TrimSpace(cleanOut), "\n")
 	var values []string
 	for _, line := range lines {
-		if strings.HasPrefix(line, "  exec") {
+		// Skip log and env primitive lines
+		if strings.Contains(line, "log") || strings.Contains(line, "env") || strings.Contains(line, "exec") {
 			continue
 		}
-		if after, ok := strings.CutPrefix(line, "X="); ok {
-			val := after
-			values = append(values, val)
+		// The echo $X will output just the value (with indentation)
+		if line != "" {
+			values = append(values, strings.TrimSpace(line))
 		}
 	}
 	if len(values) < 3 {
@@ -206,8 +202,8 @@ func TestExecEnvBlockNestedOverride(t *testing.T) {
 }
 
 func TestExecEnvBlockVarScoping(t *testing.T) {
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], nil)
 
 	// Test that vars declared inside env block don't leak outside
 	body := []ast.FnStmt{
@@ -227,8 +223,9 @@ func TestExecEnvBlockVarScoping(t *testing.T) {
 }
 
 func TestExecEnvBlockVarRefs(t *testing.T) {
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
@@ -250,52 +247,41 @@ func TestExecEnvBlockVarRefs(t *testing.T) {
 	envPairs := []ast.EnvPair{{Key: "TEST_VAR", Value: newVarRef("myvar")}}
 	block := newEnvBlock(envPairs, innerBody)
 
-	out, err := captureOutput(func() {
-		if err := ctx.execEnvBlock(block); err != nil {
-			t.Fatalf("execEnvBlock error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execEnvBlock(block); err != nil {
+		t.Fatalf("execEnvBlock error: %v", err)
 	}
-	if !strings.Contains(out, "TEST_VAR=myvalue") {
-		t.Fatalf("expected output to contain 'TEST_VAR=myvalue', got %q", out)
+	if !strings.Contains(buf.String(), "TEST_VAR=myvalue") {
+		t.Fatalf("expected output to contain 'TEST_VAR=myvalue', got %q", buf.String())
 	}
 }
 
 func TestExecActuallyRunsCommand(t *testing.T) {
-	// R1: exec actually running a command
-	cfg := testConfig()
+	cfg := testConfig(t)
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	stmt := newExecStmt(newBacktickLit("echo hello"))
-	out, err := captureOutput(func() {
-		if err := ctx.execExec(stmt); err != nil {
-			t.Fatalf("execExec error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execExec(stmt); err != nil {
+		t.Fatalf("execExec error: %v", err)
 	}
-	if !strings.Contains(out, "hello") {
-		t.Fatalf("expected output to contain 'hello', got %q", out)
+	if !strings.Contains(buf.String(), "hello") {
+		t.Fatalf("expected output to contain 'hello', got %q", buf.String())
 	}
 }
 
 func TestExecWithNonZeroExitCode(t *testing.T) {
-	// R2: exec with non-zero exit code
-	cfg := testConfig()
+	cfg := testConfig(t)
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], nil)
 
 	stmt := newExecStmt(newBacktickLit("false"))
 	err := ctx.execExec(stmt)
@@ -308,14 +294,14 @@ func TestExecWithNonZeroExitCode(t *testing.T) {
 }
 
 func TestExecWithInterpolation(t *testing.T) {
-	// R3: exec with ${var} interpolation
-	cfg := testConfig()
+	cfg := testConfig(t)
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	// Declare a var
 	if err := ctx.execVarDecl(newVarDecl("name", "string", newBacktickLit("world"))); err != nil {
@@ -331,23 +317,18 @@ func TestExecWithInterpolation(t *testing.T) {
 		},
 	}
 	stmt := newExecStmt(backtick)
-	out, err := captureOutput(func() {
-		if err := ctx.execExec(stmt); err != nil {
-			t.Fatalf("execExec error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execExec(stmt); err != nil {
+		t.Fatalf("execExec error: %v", err)
 	}
-	if !strings.Contains(out, "hello world") {
-		t.Fatalf("expected output to contain 'hello world', got %q", out)
+	if !strings.Contains(buf.String(), "hello world") {
+		t.Fatalf("expected output to contain 'hello world', got %q", buf.String())
 	}
 }
 
 func TestLogWithInterpolation(t *testing.T) {
-	// R4: log with ${var} interpolation
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	// Declare a var
 	if err := ctx.execVarDecl(newVarDecl("name", "string", newBacktickLit("world"))); err != nil {
@@ -363,23 +344,18 @@ func TestLogWithInterpolation(t *testing.T) {
 		},
 	}
 	stmt := newLogStmt(backtick)
-	out, err := captureOutput(func() {
-		if err := ctx.execLog(stmt); err != nil {
-			t.Fatalf("execLog error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execLog(stmt); err != nil {
+		t.Fatalf("execLog error: %v", err)
 	}
-	if !strings.Contains(out, "hello world") {
-		t.Fatalf("expected output to contain 'hello world', got %q", out)
+	if !strings.Contains(buf.String(), "hello world") {
+		t.Fatalf("expected output to contain 'hello world', got %q", buf.String())
 	}
 }
 
 func TestLogWithVarRef(t *testing.T) {
-	// R5: log with $var reference
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	// Declare a var
 	if err := ctx.execVarDecl(newVarDecl("myvar", "string", newBacktickLit("myvalue"))); err != nil {
@@ -387,28 +363,22 @@ func TestLogWithVarRef(t *testing.T) {
 	}
 
 	stmt := newLogStmt(newVarRef("myvar"))
-	out, err := captureOutput(func() {
-		if err := ctx.execLog(stmt); err != nil {
-			t.Fatalf("execLog error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execLog(stmt); err != nil {
+		t.Fatalf("execLog error: %v", err)
 	}
-	if !strings.Contains(out, "myvalue") {
-		t.Fatalf("expected output to contain 'myvalue', got %q", out)
+	if !strings.Contains(buf.String(), "myvalue") {
+		t.Fatalf("expected output to contain 'myvalue', got %q", buf.String())
 	}
 }
 
 func TestShellVarInFnBody(t *testing.T) {
-	// R6: shell var in fn body
-	cfg := testConfig()
+	cfg := testConfig(t)
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], nil)
 
 	stmt := newVarDecl("x", "shell", newBacktickLit("echo hello"))
 	if err := ctx.execVarDecl(stmt); err != nil {
@@ -420,12 +390,9 @@ func TestShellVarInFnBody(t *testing.T) {
 }
 
 func TestCdFollowedByExec(t *testing.T) {
-	// R7: cd followed by exec
-	cfg := testConfig()
-	tempBase := t.TempDir()
-	cfg.Sanctuary = tempBase
+	cfg := testConfig(t)
 	cfg.Projects["testproj"].Dir = "testproj"
-	projDir := filepath.Join(tempBase, "testproj")
+	projDir := filepath.Join(cfg.Sanctuary, "testproj")
 	if err := os.MkdirAll(projDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +406,7 @@ func TestCdFollowedByExec(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], nil)
 	// cd to subdirectory
 	if err := ctx.execCd(newCdStmt("sub")); err != nil {
 		t.Fatal(err)
@@ -453,9 +420,9 @@ func TestCdFollowedByExec(t *testing.T) {
 }
 
 func TestEnvBlockWithMultiplePairs(t *testing.T) {
-	// R8: env block with multiple pairs
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	var buf bytes.Buffer
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], &buf)
 
 	// Ensure project directory exists for exec
 	baseDir := filepath.Join(cfg.Sanctuary, cfg.Projects["testproj"].Dir)
@@ -472,26 +439,21 @@ func TestEnvBlockWithMultiplePairs(t *testing.T) {
 	}
 	block := newEnvBlock(envPairs, innerBody)
 
-	out, err := captureOutput(func() {
-		if err := ctx.execEnvBlock(block); err != nil {
-			t.Fatalf("execEnvBlock error: %v", err)
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
+	if err := ctx.execEnvBlock(block); err != nil {
+		t.Fatalf("execEnvBlock error: %v", err)
 	}
-	if !strings.Contains(out, "FOO=bar") {
-		t.Fatalf("expected output to contain 'FOO=bar', got %q", out)
+	if !strings.Contains(buf.String(), "FOO=bar") {
+		t.Fatalf("expected output to contain 'FOO=bar', got %q", buf.String())
 	}
-	if !strings.Contains(out, "BAZ=qux") {
-		t.Fatalf("expected output to contain 'BAZ=qux', got %q", out)
+	if !strings.Contains(buf.String(), "BAZ=qux") {
+		t.Fatalf("expected output to contain 'BAZ=qux', got %q", buf.String())
 	}
 }
 
 func TestEmptyFnBodyExecution(t *testing.T) {
 	// R9: empty fn body execution
-	cfg := testConfig()
-	ctx := newExecContext(cfg, cfg.Projects["testproj"])
+	cfg := testConfig(t)
+	ctx := newExecContext(cfg, cfg.Projects["testproj"], nil)
 
 	body := []ast.FnStmt{}
 	err := ctx.execFnBody(body)

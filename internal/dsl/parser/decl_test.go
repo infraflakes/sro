@@ -9,6 +9,23 @@ import (
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
 
+func FuzzParseProgram(f *testing.F) {
+	f.Add("sanctuary = `/tmp`;")
+	f.Add("var string x = `hello`;")
+	f.Add("pr foo { url = `http://example.com`; dir = `foo`; }")
+	f.Add("fn test { log(`hello`); }")
+	f.Add("seq myseq { fn test(pr.foo); }")
+	f.Add("par mypar { fn test(pr.foo); }")
+	f.Add("shell = `bash`;")
+	f.Add("import [ ./a.sro ];")
+
+	f.Fuzz(func(t *testing.T, input string) {
+		l := lexer.New(input)
+		p := New(l)
+		_ = p.ParseProgram()
+	})
+}
+
 func TestParseProgram(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -112,7 +129,7 @@ func TestParseProgram(t *testing.T) {
 				}
 				found := false
 				for _, err := range p.Errors() {
-					if strings.Contains(err, tt.errContains) {
+					if strings.Contains(err.Error(), tt.errContains) {
 						found = true
 						break
 					}

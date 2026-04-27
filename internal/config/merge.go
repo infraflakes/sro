@@ -10,11 +10,20 @@ import (
 
 // resolveBacktickLit resolves interpolation in a BacktickLit using the provided vars map.
 func resolveBacktickLit(lit *ast.BacktickLit, vars map[string]string) (string, error) {
+	return ResolveBacktickLitWithPos(lit, vars, 0, 0)
+}
+
+// ResolveBacktickLitWithPos resolves interpolation in a BacktickLit using the provided vars map,
+// with optional line/col information for error messages.
+func ResolveBacktickLitWithPos(lit *ast.BacktickLit, vars map[string]string, line, col int) (string, error) {
 	var sb strings.Builder
 	for _, part := range lit.Parts {
 		if part.IsVar {
 			val, ok := vars[part.Value]
 			if !ok {
+				if line > 0 || col > 0 {
+					return "", fmt.Errorf("%d:%d: undefined variable ${%s}", line, col, part.Value)
+				}
 				return "", fmt.Errorf("undefined variable: ${%s}", part.Value)
 			}
 			sb.WriteString(val)
@@ -23,6 +32,129 @@ func resolveBacktickLit(lit *ast.BacktickLit, vars map[string]string) (string, e
 		}
 	}
 	return sb.String(), nil
+}
+
+func mergeShellDecl(cfg *Config, s *ast.ShellDecl) error {
+	if cfg.Shell != "" {
+		return fmt.Errorf("duplicate shell declaration")
+	}
+	cfg.Shell = s.Value
+	return nil
+}
+
+func mergeSanctuaryDecl(cfg *Config, s *ast.SanctuaryDecl) error {
+	if cfg.Sanctuary != "" {
+		return fmt.Errorf("duplicate sanctuary declaration")
+	}
+	switch v := s.Value.(type) {
+	case *ast.BacktickLit:
+		resolved, err := resolveBacktickLit(v, cfg.Vars)
+		if err != nil {
+			return err
+		}
+		cfg.Sanctuary = resolved
+	case *ast.VarRef:
+		resolved, ok := cfg.Vars[v.Name]
+		if !ok {
+			return fmt.Errorf("undefined variable: $%s", v.Name)
+		}
+		cfg.Sanctuary = resolved
+	}
+	return nil
+}
+
+func mergeVarDecl(cfg *Config, s *ast.VarDecl) error {
+	name := s.Name
+	if _, exists := cfg.Vars[name]; exists {
+		return fmt.Errorf("duplicate variable: %s", name)
+	}
+	switch v := s.Value.(type) {
+	case *ast.BacktickLit:
+		resolved, err := resolveBacktickLit(v, cfg.Vars)
+		if err != nil {
+			return err
+		}
+		if s.VarType == "shell" {
+			if cfg.Shell == "" {
+				return fmt.Errorf("shell must be declared before using shell variables")
+			}
+			cmd := exec.Command(cfg.Shell, "-c", resolved)
+			out, err := cmd.Output()
+			if err != nil {
+				return fmt.Errorf("shell execution failed for var %s: %w", name, err)
+			}
+			cfg.Vars[name] = strings.TrimRight(string(out), "\n")
+		} else {
+			cfg.Vars[name] = resolved
+		}
+	case *ast.VarRef:
+		resolved, ok := cfg.Vars[v.Name]
+		if !ok {
+			return fmt.Errorf("undefined variable: $%s", v.Name)
+		}
+		cfg.Vars[name] = resolved
+	}
+	return nil
+}
+
+func mergeProjectDecl(cfg *Config, s *ast.ProjectDecl) error {
+	if _, exists := cfg.Projects[s.Name]; exists {
+		return fmt.Errorf("duplicate project: %s", s.Name)
+	}
+	proj := &Project{Name: s.Name, Sync: "clone"} // default
+	for _, f := range s.Fields {
+		var resolved string
+		var err error
+		switch v := f.Value.(type) {
+		case *ast.BacktickLit:
+			resolved, err = resolveBacktickLit(v, cfg.Vars)
+			if err != nil {
+				return err
+			}
+		case *ast.VarRef:
+			var ok bool
+			resolved, ok = cfg.Vars[v.Name]
+			if !ok {
+				return fmt.Errorf("undefined variable: $%s", v.Name)
+			}
+		}
+		switch f.Key {
+		case "url":
+			proj.URL = resolved
+		case "dir":
+			proj.Dir = resolved
+		case "sync":
+			proj.Sync = resolved
+		case "use":
+			proj.Use = resolved
+		}
+	}
+	cfg.Projects[s.Name] = proj
+	return nil
+}
+
+func mergeFnDecl(cfg *Config, s *ast.FnDecl) error {
+	if _, exists := cfg.Functions[s.Name]; exists {
+		return fmt.Errorf("duplicate function: %s", s.Name)
+	}
+	cfg.Functions[s.Name] = s
+	return nil
+}
+
+func mergeSeqDecl(cfg *Config, s *ast.SeqDecl) error {
+	if _, exists := cfg.Seqs[s.Name]; exists {
+		return fmt.Errorf("duplicate seq: %s", s.Name)
+	}
+	cfg.Seqs[s.Name] = s
+	return nil
+}
+
+func mergeParDecl(cfg *Config, s *ast.ParDecl) error {
+	if _, exists := cfg.Pars[s.Name]; exists {
+		return fmt.Errorf("duplicate par: %s", s.Name)
+	}
+	cfg.Pars[s.Name] = s
+	return nil
 }
 
 func merge(programs []*ast.Program) (*Config, error) {
@@ -38,114 +170,33 @@ func merge(programs []*ast.Program) (*Config, error) {
 		for _, stmt := range prog.Statements {
 			switch s := stmt.(type) {
 			case *ast.ShellDecl:
-				if cfg.Shell != "" {
-					return nil, fmt.Errorf("duplicate shell declaration")
+				if err := mergeShellDecl(cfg, s); err != nil {
+					return nil, err
 				}
-				cfg.Shell = s.Value
-
 			case *ast.SanctuaryDecl:
-				if cfg.Sanctuary != "" {
-					return nil, fmt.Errorf("duplicate sanctuary declaration")
+				if err := mergeSanctuaryDecl(cfg, s); err != nil {
+					return nil, err
 				}
-				switch v := s.Value.(type) {
-				case *ast.BacktickLit:
-					resolved, err := resolveBacktickLit(v, cfg.Vars)
-					if err != nil {
-						return nil, err
-					}
-					cfg.Sanctuary = resolved
-				case *ast.VarRef:
-					resolved, ok := cfg.Vars[v.Name]
-					if !ok {
-						return nil, fmt.Errorf("undefined variable: $%s", v.Name)
-					}
-					cfg.Sanctuary = resolved
-				}
-
 			case *ast.VarDecl:
-				name := s.Name
-				if _, exists := cfg.Vars[name]; exists {
-					return nil, fmt.Errorf("duplicate variable: %s", name)
+				if err := mergeVarDecl(cfg, s); err != nil {
+					return nil, err
 				}
-				switch v := s.Value.(type) {
-				case *ast.BacktickLit:
-					resolved, err := resolveBacktickLit(v, cfg.Vars)
-					if err != nil {
-						return nil, err
-					}
-					if s.VarType == "shell" {
-						if cfg.Shell == "" {
-							return nil, fmt.Errorf("shell must be declared before using shell variables")
-						}
-						cmd := exec.Command(cfg.Shell, "-c", resolved)
-						out, err := cmd.Output()
-						if err != nil {
-							return nil, fmt.Errorf("shell execution failed for var %s: %w", name, err)
-						}
-						cfg.Vars[name] = strings.TrimRight(string(out), "\n")
-					} else {
-						cfg.Vars[name] = resolved
-					}
-				case *ast.VarRef:
-					resolved, ok := cfg.Vars[v.Name]
-					if !ok {
-						return nil, fmt.Errorf("undefined variable: $%s", v.Name)
-					}
-					cfg.Vars[name] = resolved
-				}
-
 			case *ast.ProjectDecl:
-				if _, exists := cfg.Projects[s.Name]; exists {
-					return nil, fmt.Errorf("duplicate project: %s", s.Name)
+				if err := mergeProjectDecl(cfg, s); err != nil {
+					return nil, err
 				}
-				proj := &Project{Name: s.Name, Sync: "clone"} // default
-				for _, f := range s.Fields {
-					var resolved string
-					switch v := f.Value.(type) {
-					case *ast.BacktickLit:
-						var err error
-						resolved, err = resolveBacktickLit(v, cfg.Vars)
-						if err != nil {
-							return nil, err
-						}
-					case *ast.VarRef:
-						var ok bool
-						resolved, ok = cfg.Vars[v.Name]
-						if !ok {
-							return nil, fmt.Errorf("undefined variable: $%s", v.Name)
-						}
-					}
-					switch f.Key {
-					case "url":
-						proj.URL = resolved
-					case "dir":
-						proj.Dir = resolved
-					case "sync":
-						proj.Sync = resolved
-					case "use":
-						proj.Use = resolved
-					}
-				}
-				cfg.Projects[s.Name] = proj
-
 			case *ast.FnDecl:
-				if _, exists := cfg.Functions[s.Name]; exists {
-					return nil, fmt.Errorf("duplicate function: %s", s.Name)
+				if err := mergeFnDecl(cfg, s); err != nil {
+					return nil, err
 				}
-				cfg.Functions[s.Name] = s
-
 			case *ast.SeqDecl:
-				if _, exists := cfg.Seqs[s.Name]; exists {
-					return nil, fmt.Errorf("duplicate seq: %s", s.Name)
+				if err := mergeSeqDecl(cfg, s); err != nil {
+					return nil, err
 				}
-				cfg.Seqs[s.Name] = s
-
 			case *ast.ParDecl:
-				if _, exists := cfg.Pars[s.Name]; exists {
-					return nil, fmt.Errorf("duplicate par: %s", s.Name)
+				if err := mergeParDecl(cfg, s); err != nil {
+					return nil, err
 				}
-				cfg.Pars[s.Name] = s
-
 			case *ast.ImportDecl:
 				// already handled in parseRecursive, skip
 			}

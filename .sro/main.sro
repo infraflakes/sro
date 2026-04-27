@@ -1,9 +1,9 @@
-fn init {
+fn init_sro {
   exec(`go get -u`);
   exec(`go mod tidy`);
 }
 
-fn build {
+fn build_sro {
   log(`Building sro CLI!`);
   exec(`go mod tidy`);
   var shell version = `git describe --tags --always --dirty --first-parent 2>/dev/null || echo "dev"`;
@@ -12,7 +12,7 @@ fn build {
   };
 }
 
-fn check {
+fn check_sro {
   log(`Formating and linting the codebase!`);
   exec(`go fmt ./...`);
   exec(`go fix ./...`);
@@ -20,27 +20,27 @@ fn check {
   exec(`golangci-lint run`);
 }
 
-fn test {
+fn test_sro {
   log(`Examine unit tests...`);
   exec(`go test ./... -v`);
 }
 
-seq start {
-  init(pr.sro);
-  build(pr.sro);
+seq start_sro {
+  init_sro(pr.sro);
+  build_sro(pr.sro);
 }
 
-seq build {
-  build(pr.sro);
+seq build_sro {
+  build_sro(pr.sro);
 }
 
-seq test {
-  init(pr.sro);
-  check(pr.sro);
-  test(pr.sro);
+seq test_sro {
+  check_sro(pr.sro);
+  test_sro(pr.sro);
 }
 
-par all {
-  build(pr.sro);
-  seq.test;
+par all_sro {
+  build_sro(pr.sro);
+  check_sro(pr.sro);
+  test_sro(pr.sro);
 }

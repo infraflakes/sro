@@ -1,9 +1,7 @@
 package runner
 
 import (
-	"io"
-	"os"
-	"strings"
+	"testing"
 
 	"github.com/infraflakes/sro/internal/config"
 	"github.com/infraflakes/sro/internal/dsl/ast"
@@ -87,10 +85,11 @@ func newFnCall(fnName, projectName string) *ast.FnCall {
 	}
 }
 
-func testConfig() *config.Config {
+func testConfig(t *testing.T) *config.Config {
+	t.Helper()
 	return &config.Config{
 		Shell:     "bash",
-		Sanctuary: "/tmp/sanctuary",
+		Sanctuary: t.TempDir(),
 		Projects: map[string]*config.Project{
 			"testproj": {
 				Name: "testproj",
@@ -104,24 +103,4 @@ func testConfig() *config.Config {
 		Pars:      make(map[string]*ast.ParDecl),
 		Vars:      map[string]string{},
 	}
-}
-
-func captureOutput(fn func()) (string, error) {
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		return "", err
-	}
-	os.Stdout = w
-
-	fn() // run the function, writing to the pipe
-
-	// Restore stdout and close writer
-	os.Stdout = old
-	_ = w.Close()
-
-	var buf strings.Builder
-	_, err = io.Copy(&buf, r)
-	_ = r.Close()
-	return buf.String(), err
 }

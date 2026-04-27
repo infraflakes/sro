@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"github.com/infraflakes/sro/internal/dsl/ast"
 	"github.com/infraflakes/sro/internal/dsl/token"
 )
@@ -19,16 +18,22 @@ func (p *Parser) parseSeqDecl() ast.Stmt {
 	stmts := []ast.SeqStmt{}
 	for !p.curTokenIs(token.RBRACE) {
 		if p.curTokenIs(token.EOF) {
-			p.errors = append(p.errors, fmt.Sprintf("missing closing brace for seq at %d:%d", p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "missing closing brace for seq",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return &ast.SeqDecl{Token: tok, Name: name, Stmts: stmts}
 		}
 		var stmt ast.SeqStmt
 		if p.curTokenIs(token.SEQ) && p.peekTokenIs(token.DOT) {
 			stmt = p.parseSeqRef()
 		} else if p.curTokenIs(token.PAR) && p.peekTokenIs(token.DOT) {
-			p.errors = append(p.errors, fmt.Sprintf(
-				"par blocks cannot be referenced, use CLI to run par at %d:%d",
-				p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "par blocks cannot be referenced, use CLI to run par",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			p.nextToken() // .
 			p.nextToken() // X
 			p.nextToken() // ;
@@ -62,16 +67,22 @@ func (p *Parser) parseParDecl() ast.Stmt {
 	stmts := []ast.ParStmt{}
 	for !p.curTokenIs(token.RBRACE) {
 		if p.curTokenIs(token.EOF) {
-			p.errors = append(p.errors, fmt.Sprintf("missing closing brace for par at %d:%d", p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "missing closing brace for par",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			return &ast.ParDecl{Token: tok, Name: name, Stmts: stmts}
 		}
 		var stmt ast.ParStmt
 		if p.curTokenIs(token.SEQ) && p.peekTokenIs(token.DOT) {
 			stmt = p.parseSeqRef()
 		} else if p.curTokenIs(token.PAR) && p.peekTokenIs(token.DOT) {
-			p.errors = append(p.errors, fmt.Sprintf(
-				"par blocks cannot be referenced, use CLI to run par at %d:%d",
-				p.curToken.Line, p.curToken.Col))
+			p.errors = append(p.errors, ParseError{
+				Message: "par blocks cannot be referenced, use CLI to run par",
+				Line:    p.curToken.Line,
+				Col:     p.curToken.Col,
+			})
 			p.nextToken() // .
 			p.nextToken() // X
 			p.nextToken() // ;

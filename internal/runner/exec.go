@@ -47,7 +47,11 @@ func (ctx *execContext) execLog(s *ast.LogStmt) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(msg)
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;255;203;107mlog  %s\033[0m\n", ctx.indent(), msg)
 	return nil
 }
 
@@ -56,13 +60,18 @@ func (ctx *execContext) execExec(s *ast.ExecStmt) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("  exec  %s\n", cmdStr)
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;91;156;246mexec %s\033[0m\n", ctx.indent(), cmdStr)
 
-	cmd := exec.Command(ctx.cfg.Shell, "-c", cmdStr)
+	cmd := exec.CommandContext(ctx.ctx, ctx.cfg.Shell, "-c", cmdStr)
 	cmd.Dir = ctx.workDir
 	cmd.Env = ctx.buildEnv()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	indented := newIndentWriter(writer, ctx.stdoutIndent())
+	cmd.Stdout = indented
+	cmd.Stderr = indented
 
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
@@ -84,6 +93,11 @@ func (ctx *execContext) execCd(s *ast.CdStmt) error {
 	if _, err := os.Stat(ctx.workDir); err != nil {
 		return fmt.Errorf("cd %q: %w", s.Arg, err)
 	}
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;255;203;107mcd   %s\033[0m\n", ctx.indent(), s.Arg)
 	return nil
 }
 
@@ -116,7 +130,20 @@ func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 		}
 		layer[p.Key] = val
 	}
+
+	writer := ctx.writer
+	if writer == nil {
+		writer = os.Stdout
+	}
+	keys := make([]string, 0, len(s.Pairs))
+	for _, p := range s.Pairs {
+		keys = append(keys, p.Key)
+	}
+	_, _ = fmt.Fprintf(writer, "%s\033[38;2;199;146;234menv  %s\033[0m\n",
+		ctx.indent(), strings.Join(keys, ", "))
+
 	ctx.envStack = append(ctx.envStack, layer)
+	ctx.envDirty = true
 
 	// Snapshot vars before body so local vars don't leak
 	savedVars := make(map[string]string, len(ctx.vars))
@@ -126,5 +153,6 @@ func (ctx *execContext) execEnvBlock(s *ast.EnvBlock) error {
 
 	ctx.vars = savedVars
 	ctx.envStack = ctx.envStack[:len(ctx.envStack)-1]
+	ctx.envDirty = true
 	return err
 }

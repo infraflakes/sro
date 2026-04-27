@@ -190,7 +190,7 @@ func TestErrorCases(t *testing.T) {
 			}
 			found := false
 			for _, err := range p.Errors() {
-				if strings.Contains(err, tt.wantErrSubj) {
+				if strings.Contains(err.Error(), tt.wantErrSubj) {
 					found = true
 					break
 				}

@@ -1,80 +1,76 @@
 {
-  description = "A supercharged cd wrapper with aliases and TUI.";
+  description = "SRO development flake";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    flake-parts.url = "github:hercules-ci/flake-parts";
   };
 
-  outputs = {
+  outputs = inputs @ {
     self,
     nixpkgs,
-    flake-utils,
+    flake-parts,
     ...
   }:
-    flake-utils.lib.eachDefaultSystem (
-      system: let
-        pkgs = nixpkgs.legacyPackages.${system};
+    flake-parts.lib.mkFlake {inherit inputs;} {
+      systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
-        buildSro = {
-          src,
-          version,
-        }:
-          pkgs.buildGoModule {
-            pname = "sro";
-            inherit version src;
-            preBuild = ''
-              export CGO_ENABLED=0
-            '';
-            vendorHash = "sha256-NgIc1yRVP74hyE/Bfsr+Cl3MRgylgO+CzTdWRjjRGEg="; # Update if source changes
-            ldflags = [
-              "-s"
-              "-w"
-              "-X main.version=${version}"
-            ];
-            nativeBuildInputs = [pkgs.installShellFiles];
-            # postFixup = ''
-            #   installShellCompletion --fish ${src}/completions/sro.fish
-            #   installShellCompletion --zsh ${src}/completions/sro.zsh
-            #   installShellCompletion --bash ${src}/completions/sro.bash
-            # '';
-          };
+      perSystem = {
+        config,
+        self',
+        inputs',
+        pkgs,
+        system,
+        ...
+      }: let
+        version =
+          if (self ? dirtyShortRev)
+          then "${self.dirtyShortRev}-dirty"
+          else if (self ? shortRev)
+          then self.shortRev
+          else "dev";
 
-        cleanedSource = pkgs.lib.cleanSourceWith {
-          src = ./.;
-          filter = path: type: let
-            baseName = baseNameOf path;
-          in
-            baseName == ".version" || pkgs.lib.cleanSourceFilter path type;
-        };
+        go = pkgs.go_1_26;
+        buildGoModule = pkgs.buildGoModule.override {inherit go;};
       in {
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            go
-            golangci-lint
-            cmake
-            goreleaser
+        packages.default = buildGoModule {
+          pname = "sro";
+          inherit version;
+          src = ./.;
+
+          vendorHash = "sha256-GOjUhJmKYHMK/wQwaNmpuPrvicakkIfb1/8u00WcynM=";
+
+          env.CGO_ENABLED = "0";
+
+          ldflags = [
+            "-s"
+            "-w"
+            "-X github.com/infraflakes/sro/cmd.version=${version}"
           ];
-          shellHook = ''
-            export GOPATH="$PWD/.go"
-            export GOBIN="$GOPATH/bin"
-            export PATH="$GOBIN:$PATH"
+
+          nativeBuildInputs = [pkgs.installShellFiles pkgs.git];
+
+          postInstall = ''
+            installShellCompletion --cmd sro \
+              --bash completions/sro.bash \
+              --fish completions/sro.fish \
+              --zsh completions/sro.zsh
           '';
         };
 
-        packages.default = buildSro {
-          src = cleanedSource;
-          version = let
-            versionFile = "${cleanedSource}/.version";
-          in
-            pkgs.lib.escapeShellArg (
-              if builtins.pathExists versionFile
-              then builtins.readFile versionFile
-              else self.shortRev or "dev"
-            );
-        };
+        devShells.default = pkgs.mkShell {
+          packages = [
+            go
+            pkgs.golangci-lint
+            pkgs.cmake
+            pkgs.goreleaser
+          ];
 
-        apps.default = flake-utils.lib.mkApp {drv = self.packages.${system}.default;};
-      }
-    );
+          shellHook = ''
+            export GOPATH="$PWD/.go"
+            export PATH="$GOPATH/bin:$PATH"
+          '';
+        };
+      };
+    };
 }

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 )
 
 func TestSeqFailFast(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 
 	// R10: verify second fn wasn't called in fail-fast
 	// Function that will fail
@@ -34,18 +35,22 @@ func TestSeqFailFast(t *testing.T) {
 	}
 	cfg.Seqs["testseq"] = seq
 
+	var buf bytes.Buffer
 	r := New(cfg)
+	r.Writer = &buf
 	err := r.RunSeq("testseq")
 	if err == nil {
 		t.Fatal("expected error from failing exec")
 	}
-	// The second function should not have been called - verify by checking output doesn't contain its log
-	// Since we can't easily capture output from RunSeq, we'll just verify the error occurred
-	// In a real scenario, we'd need to add a way to track function calls
+	// Verify the second function was NOT called by checking its log is absent
+	output := buf.String()
+	if strings.Contains(output, "second-called") {
+		t.Fatal("second function ran despite fail-fast — seq did not stop after first failure")
+	}
 }
 
 func TestSeqCallsSeq(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	logFn := newFnDecl("logfn", []ast.FnStmt{
 		newLogStmt(newBacktickLit("inner-log")),
 	})
@@ -81,7 +86,7 @@ func TestSeqCallsSeq(t *testing.T) {
 }
 
 func TestRunSeqUnknown(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	r := New(cfg)
 	err := r.RunSeq("nonexistent")
 	if err == nil || !strings.Contains(err.Error(), "unknown seq") {
@@ -90,7 +95,7 @@ func TestRunSeqUnknown(t *testing.T) {
 }
 
 func TestUnknownFunctionInSeq(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	seq := &ast.SeqDecl{
 		Token: newTestToken(token.SEQ),
 		Name:  "badseq",
@@ -107,7 +112,7 @@ func TestUnknownFunctionInSeq(t *testing.T) {
 }
 
 func TestUnknownProjectInSeq(t *testing.T) {
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.Functions["dummy"] = newFnDecl("dummy", []ast.FnStmt{})
 	seq := &ast.SeqDecl{
 		Token: newTestToken(token.SEQ),
