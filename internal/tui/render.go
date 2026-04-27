@@ -8,6 +8,8 @@ import (
 	"github.com/gdamore/tcell/v3/vt"
 )
 
+var SpinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+
 func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	w, h := screen.Size()
 	screen.Fill(' ', tcell.StyleDefault)
@@ -155,8 +157,8 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int, maxY in
 
 	// Blit cells from vterm
 	if task.VTerm != nil {
-		cursorPos := task.VTerm.Pos()
-		actualLines := int(cursorPos.Y) + 1 // cursor Y is 0-indexed
+		be := task.VTerm.Backend()
+		vtSize := be.GetSize()
 
 		// Available rows between current y and the footer boundary
 		// Reserve 1 row for spacing after panel
@@ -165,13 +167,19 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int, maxY in
 			return // no room at all
 		}
 
-		// Panel height is based on actual content, capped at maxPanelCap,
-		// but NEVER goes below minPanelHeight (prevents total pruning)
+		cursorPos := task.VTerm.Pos()
+		actualLines := int(cursorPos.Y) + 1
+
+		// Panel height is based on actual content, capped at maxPanelCap
 		panelHeight := min(actualLines, maxPanelCap)
 		panelHeight = max(panelHeight, min(actualLines, minPanelHeight))
-		panelHeight = min(panelHeight, availableRows) // clamp to available space
+		panelHeight = min(panelHeight, availableRows)
 
+		// For pruning display, use TotalLines if available to show true count
 		prunedCount := actualLines - panelHeight
+		if task.TotalLines > 0 {
+			prunedCount = task.TotalLines - panelHeight
+		}
 		startRow := max(actualLines-panelHeight, 0)
 
 		// Pruned indicator (takes 1 row from the panel budget)
@@ -188,14 +196,16 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int, maxY in
 		}
 
 		// Blit cells — hard stop at maxY
-		be := task.VTerm.Backend()
-		vtSize := be.GetSize()
-		for row := 0; row < panelHeight && vt.Row(startRow+row) < vtSize.Y; row++ {
+		for row := 0; row < panelHeight; row++ {
 			if *y >= maxY {
-				break // STOP before the footer — don't just skip, actually break
+				break
+			}
+			vtRow := vt.Row(startRow + row)
+			if vtRow >= vtSize.Y {
+				break
 			}
 			for col := vt.Col(0); col < vtSize.X && int(col) < panelWidth; col++ {
-				cell := be.GetCell(vt.Coord{X: col, Y: vt.Row(startRow + row)})
+				cell := be.GetCell(vt.Coord{X: col, Y: vtRow})
 				if cell.C != "" {
 					style := vtStyleToTcellStyle(cell.S)
 					r := []rune(cell.C)

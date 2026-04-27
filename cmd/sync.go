@@ -91,7 +91,7 @@ func runSync() {
 
 				// Status is already "running" from initialization
 
-				err := srSync.SyncProjectWithContext(ctx, cfg, p, model.Tasks[idx].VTerm)
+				err := srSync.SyncProjectWithContext(ctx, cfg, p, tui.NewLineCountingWriter(model.Tasks[idx].VTerm, &model.Tasks[idx].TotalLines))
 
 				if err != nil {
 					model.Tasks[idx].Status = "failed"

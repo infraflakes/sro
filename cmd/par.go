@@ -90,7 +90,7 @@ func runPar(name string) {
 				// Don't auto-expand in par - user controls expansion
 
 				r := runner.NewWithContext(cfg, ctx)
-				r.Writer = model.Tasks[idx].VTerm
+				r.Writer = tui.NewLineCountingWriter(model.Tasks[idx].VTerm, &model.Tasks[idx].TotalLines)
 				r.SuppressHeaders = true
 
 				var err error
@@ -98,7 +98,7 @@ func runPar(name string) {
 				case *ast.FnCall:
 					err = r.ExecuteFnCall(stmt)
 				case *ast.SeqRef:
-					err = r.RunSeqWithWriter(stmt.SeqName, model.Tasks[idx].VTerm)
+					err = r.RunSeqWithWriter(stmt.SeqName, tui.NewLineCountingWriter(model.Tasks[idx].VTerm, &model.Tasks[idx].TotalLines))
 				}
 
 				if err != nil {

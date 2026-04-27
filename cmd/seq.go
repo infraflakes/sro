@@ -85,7 +85,7 @@ func runSeq(name string) {
 			}
 
 			r := runner.NewWithContext(cfg, ctx)
-			r.Writer = model.Tasks[i].VTerm
+			r.Writer = tui.NewLineCountingWriter(model.Tasks[i].VTerm, &model.Tasks[i].TotalLines)
 			r.SuppressHeaders = true
 
 			var err error
