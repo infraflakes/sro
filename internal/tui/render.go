@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sync/atomic"
 
 	"github.com/gdamore/tcell/v3"
 	"github.com/gdamore/tcell/v3/color"
@@ -21,27 +22,33 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 
 	y := 0
 
-	// Header (includes its own separator and spacing)
-	renderHeader(screen, model, w, &y)
-
-	// Copy task data under lock for safe concurrent access
+	// Snapshot all model fields under lock for safe concurrent access
 	model.Mu.Lock()
+	modelType := model.Type
+	modelName := model.Name
+	selected := model.Selected
 	tasksCopy := make([]Task, len(model.Tasks))
 	copy(tasksCopy, model.Tasks)
 	scrollOffset := model.ScrollOffset
 	model.Mu.Unlock()
+
+	// Header (includes its own separator and spacing)
+	renderHeader(screen, modelType, modelName, len(tasksCopy), w, &y)
 
 	// Task rows — render until we run out of screen space
 	for i := scrollOffset; i < len(tasksCopy); i++ {
 		if y >= footerY {
 			break
 		}
-		renderTaskRow(screen, tasksCopy, i, w, &y, spinnerIdx, model.Selected)
+		renderTaskRow(screen, tasksCopy, i, w, &y, spinnerIdx, selected)
 		if y >= footerY {
 			break // task row itself hit the boundary
 		}
 		if tasksCopy[i].Expanded {
+			// Hold lock during VTerm access to prevent race with concurrent writes
+			model.Mu.Lock()
 			renderExpandedPanel(screen, &tasksCopy[i], w, &y, footerY)
+			model.Mu.Unlock()
 		}
 	}
 
@@ -49,9 +56,9 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	renderFooter(screen, tasksCopy, w, h, spinnerIdx)
 }
 
-func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
+func renderHeader(screen tcell.Screen, modelType string, modelName string, taskCount int, w int, y *int) {
 	var badgeColor tcell.Color
-	switch model.Type {
+	switch modelType {
 	case "seq":
 		badgeColor = Seq
 	case "par":
@@ -62,19 +69,19 @@ func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
 		badgeColor = Text
 	}
 
-	badgeText := fmt.Sprintf(" %s ", model.Type)
+	badgeText := fmt.Sprintf(" %s ", modelType)
 	for i, r := range badgeText {
 		style := tcell.StyleDefault.Foreground(color.Black).Background(badgeColor)
 		screen.SetContent(i, *y, r, nil, style)
 	}
 
-	nameText := fmt.Sprintf(" %s ", model.Name)
+	nameText := fmt.Sprintf(" %s ", modelName)
 	for i, r := range nameText {
 		style := tcell.StyleDefault.Foreground(TextBright)
 		screen.SetContent(len(badgeText)+i, *y, r, nil, style)
 	}
 
-	countText := fmt.Sprintf(" %d tasks ", len(model.Tasks))
+	countText := fmt.Sprintf(" %d tasks ", taskCount)
 	offset := w - len(countText)
 	for i, r := range countText {
 		style := tcell.StyleDefault.Foreground(Muted)
@@ -188,8 +195,9 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int, maxY in
 
 		// For pruning display, use TotalLines if available to show true count
 		prunedCount := actualLines - panelHeight
-		if task.TotalLines > 0 {
-			prunedCount = task.TotalLines - panelHeight
+		totalLines := atomic.LoadInt64(&task.TotalLines)
+		if totalLines > 0 {
+			prunedCount = int(totalLines) - panelHeight
 		}
 		startRow := max(actualLines-panelHeight, 0)
 

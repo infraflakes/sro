@@ -3,6 +3,7 @@ package tui
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 
 	"github.com/gdamore/tcell/v3/vt"
 )
@@ -22,27 +23,31 @@ type Task struct {
 	Status     string // "ok", "running", "failed", "pending"
 	Expanded   bool
 	VTerm      vt.MockTerm // virtual terminal for this task
-	TotalLines int         // total lines output (for accurate pruning calculation)
+	TotalLines int64       // total lines output (for accurate pruning calculation)
 }
 
 // lineCountingWriter wraps an io.Writer to count newline characters
 type lineCountingWriter struct {
 	writer     io.Writer
-	totalLines *int
+	totalLines *int64
 }
 
 func (w *lineCountingWriter) Write(p []byte) (int, error) {
 	n, err := w.writer.Write(p)
+	var added int64
 	for _, b := range p[:n] {
 		if b == '\n' {
-			*w.totalLines++
+			added++
 		}
+	}
+	if added > 0 {
+		atomic.AddInt64(w.totalLines, added)
 	}
 	return n, err
 }
 
 // NewLineCountingWriter creates a writer that counts newlines written to it
-func NewLineCountingWriter(writer io.Writer, totalLines *int) io.Writer {
+func NewLineCountingWriter(writer io.Writer, totalLines *int64) io.Writer {
 	return &lineCountingWriter{
 		writer:     writer,
 		totalLines: totalLines,

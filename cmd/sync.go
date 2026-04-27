@@ -99,9 +99,9 @@ func runSync() {
 				if err != nil {
 					model.Mu.Lock()
 					model.Tasks[idx].Status = "failed"
-					model.Mu.Unlock()
 					// Write error to vterm so user can see it when expanded
 					_, _ = fmt.Fprintf(model.Tasks[idx].VTerm, "\033[38;2;224;92;106m%v\033[0m\n", err)
+					model.Mu.Unlock()
 					mu.Lock()
 					hasFailed = true
 					mu.Unlock()

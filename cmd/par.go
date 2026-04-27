@@ -83,6 +83,9 @@ func runPar(name string) {
 
 				// Skip if vterm failed to start
 				if model.Tasks[idx].VTerm == nil {
+					mu.Lock()
+					hasFailed = true
+					mu.Unlock()
 					return
 				}
 
@@ -101,6 +104,8 @@ func runPar(name string) {
 					err = r.ExecuteFnCall(stmt)
 				case *ast.SeqRef:
 					err = r.RunSeqWithWriter(stmt.SeqName, tui.NewLineCountingWriter(model.Tasks[idx].VTerm, &model.Tasks[idx].TotalLines))
+				default:
+					err = fmt.Errorf("unknown par statement: %T", s)
 				}
 
 				if err != nil {
