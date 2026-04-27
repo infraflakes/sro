@@ -1,5 +1,4 @@
 .go
 .direnv
 bin/
-test/
 result

@@ -14,11 +14,11 @@
 #   sro sync                     Clone/sync all project repositories
 #   sro seq <name>               Run a sequential execution block
 #   sro par <name>               Run a parallel execution block
-#   sro -c <path> <command>      Use a custom config file (default: main.sro)
+#   sro -c <path> <command>      Use a custom config file (default: ~/.config/sro/config.sro)
 #   sro --config <path> <cmd>    Same as -c
 #
 # Config discovery:
-#   By default sro looks for main.sro in the current directory.
+#   By default sro looks for ~/.config/sro/config.sro.
 #   Use -c or --config to override.
 
 # 1. SHELL DECLARATION (required, must be first)
