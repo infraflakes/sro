@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"maps"
@@ -84,4 +85,57 @@ func (ctx *execContext) buildEnv() []string {
 		result = append(result, k+"="+v)
 	}
 	return result
+}
+
+// indent returns the indentation prefix for the current env nesting depth.
+func (ctx *execContext) indent() string {
+	return strings.Repeat("  ", len(ctx.envStack))
+}
+
+// stdoutIndent returns the indentation prefix for stdout (one level deeper than primitives).
+func (ctx *execContext) stdoutIndent() string {
+	return strings.Repeat("  ", len(ctx.envStack)+1)
+}
+
+// indentWriter wraps an io.Writer and prepends a prefix to each line.
+type indentWriter struct {
+	w      io.Writer
+	prefix string
+	atBOL  bool // at beginning of line
+}
+
+func newIndentWriter(w io.Writer, prefix string) *indentWriter {
+	return &indentWriter{w: w, prefix: prefix, atBOL: true}
+}
+
+func (iw *indentWriter) Write(p []byte) (n int, err error) {
+	written := 0
+	for len(p) > 0 {
+		if iw.atBOL && len(p) > 0 {
+			// Write indent prefix at the start of each line
+			if _, err := iw.w.Write([]byte(iw.prefix)); err != nil {
+				return written, err
+			}
+			iw.atBOL = false
+		}
+
+		// Find the next newline
+		idx := bytes.IndexByte(p, '\n')
+		if idx < 0 {
+			// No newline — write the rest
+			n, err := iw.w.Write(p)
+			written += n
+			return written, err
+		}
+
+		// Write up to and including the newline
+		n, err := iw.w.Write(p[:idx+1])
+		written += n
+		if err != nil {
+			return written, err
+		}
+		p = p[idx+1:]
+		iw.atBOL = true
+	}
+	return written, nil
 }

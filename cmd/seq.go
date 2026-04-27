@@ -56,7 +56,7 @@ func runSeq(name string) {
 	// Create a vterm per task in the seq
 	for _, stmt := range seq.Stmts {
 		label := labelForStmt(stmt)
-		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}))
+		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}), vt.MockOptColors(1<<24))
 		vterm.Start()
 		vterm.Write([]byte("\x1b[20h")) // enable newline mode: LF implies CR
 		model.Tasks = append(model.Tasks, tui.Task{

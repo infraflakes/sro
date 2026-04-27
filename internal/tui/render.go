@@ -13,7 +13,7 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	screen.Fill(' ', tcell.StyleDefault)
 
 	// Calculate header height
-	headerHeight := 4 // header + type note + separator
+	headerHeight := 4 // header + 2 spacing lines
 	footerHeight := 1 // footer only
 	visibleHeight := h - headerHeight - footerHeight
 
@@ -27,15 +27,10 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	renderHeader(screen, model, w, &y)
 	y++
 
-	// Type note
-	renderTypeNote(screen, model, w, &y)
-	y++
-
-	// Separator line between header and tasks
-	for x := range w {
-		screen.SetContent(x, y, '─', nil, tcell.StyleDefault.Foreground(Dim))
+	// Add vertical spacing between header and tasks
+	for range 2 {
+		y++
 	}
-	y++
 
 	// Task rows (only visible ones)
 	for i := startTask; i < endTask; i++ {
@@ -75,7 +70,7 @@ func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
 	}
 
 	countText := fmt.Sprintf(" %d tasks ", len(model.Tasks))
-	offset := len(badgeText) + len(nameText)
+	offset := w - len(countText)
 	for i, r := range countText {
 		style := tcell.StyleDefault.Foreground(Muted)
 		screen.SetContent(offset+i, *y, r, nil, style)
@@ -170,24 +165,6 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 	availableHeight := termH - *y - 3 // leave room for footer and remaining tasks
 	panelWidth := w - 4
 
-	// Top border matching task status
-	var borderColor color.Color
-	switch task.Status {
-	case "ok":
-		borderColor = Ok
-	case "failed":
-		borderColor = Failed
-	case "running":
-		borderColor = Running
-	default:
-		borderColor = Muted
-	}
-
-	for x := 2; x < w-2; x++ {
-		screen.SetContent(x, *y, '─', nil, tcell.StyleDefault.Foreground(borderColor))
-	}
-	*y++
-
 	// Blit cells from vterm
 	if task.VTerm != nil {
 		cursorPos := task.VTerm.Pos()
@@ -237,7 +214,7 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 }
 
 func renderFooter(screen tcell.Screen, model *Model, w, h int, spinnerIdx int) {
-	y := h - 1
+	y := h - 3
 
 	// Clear footer row
 	for x := range w {
