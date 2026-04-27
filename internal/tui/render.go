@@ -10,11 +10,11 @@ import (
 
 func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	w, h := screen.Size()
-	screen.Fill(' ', tcell.StyleDefault.Background(Bg))
+	screen.Fill(' ', tcell.StyleDefault)
 
 	// Calculate header height
 	headerHeight := 4 // header + type note + separator
-	footerHeight := 2 // separator + footer
+	footerHeight := 1 // footer only
 	visibleHeight := h - headerHeight - footerHeight
 
 	// Calculate which tasks are visible based on ScrollOffset
@@ -33,7 +33,7 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 
 	// Separator line between header and tasks
 	for x := range w {
-		screen.SetContent(x, y, '─', nil, tcell.StyleDefault.Foreground(Dim).Background(Bg))
+		screen.SetContent(x, y, '─', nil, tcell.StyleDefault.Foreground(Dim))
 	}
 	y++
 
@@ -45,14 +45,8 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 		}
 	}
 
-	// Footer separator line
-	for x := range w {
-		screen.SetContent(x, y, '─', nil, tcell.StyleDefault.Foreground(Dim).Background(Bg))
-	}
-	y++
-
 	// Footer
-	renderFooter(screen, model, w, h)
+	renderFooter(screen, model, w, h, spinnerIdx)
 }
 
 func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
@@ -76,14 +70,14 @@ func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
 
 	nameText := fmt.Sprintf(" %s ", model.Name)
 	for i, r := range nameText {
-		style := tcell.StyleDefault.Foreground(TextBright).Background(Bg1)
+		style := tcell.StyleDefault.Foreground(TextBright)
 		screen.SetContent(len(badgeText)+i, *y, r, nil, style)
 	}
 
 	countText := fmt.Sprintf(" %d tasks ", len(model.Tasks))
 	offset := len(badgeText) + len(nameText)
 	for i, r := range countText {
-		style := tcell.StyleDefault.Foreground(Muted).Background(Bg1)
+		style := tcell.StyleDefault.Foreground(Muted)
 		screen.SetContent(offset+i, *y, r, nil, style)
 	}
 
@@ -104,7 +98,7 @@ func renderTypeNote(screen tcell.Screen, model *Model, w int, y *int) {
 	}
 
 	for i, r := range note {
-		style := tcell.StyleDefault.Foreground(Muted).Background(Bg)
+		style := tcell.StyleDefault.Foreground(Muted)
 		screen.SetContent(i, *y, r, nil, style)
 	}
 }
@@ -113,20 +107,14 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 	task := &model.Tasks[taskIdx]
 	isSelected := taskIdx == model.Selected
 
-	// Background for the entire row
-	rowBg := Bg
-	if isSelected {
-		rowBg = Bg3
-	}
-
-	// Clear the row with the appropriate background
+	// Clear the row with default background
 	for x := range w {
-		screen.SetContent(x, *y, ' ', nil, tcell.StyleDefault.Background(rowBg))
+		screen.SetContent(x, *y, ' ', nil, tcell.StyleDefault)
 	}
 
 	// Selection indicator
 	if isSelected {
-		screen.SetContent(0, *y, '▸', nil, tcell.StyleDefault.Foreground(TextBright).Background(rowBg))
+		screen.SetContent(0, *y, '▸', nil, tcell.StyleDefault.Foreground(TextBright))
 	}
 
 	// Status icon
@@ -150,7 +138,7 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 		iconColor = Muted
 	}
 
-	screen.SetContent(2, *y, icon, nil, tcell.StyleDefault.Foreground(iconColor).Background(rowBg))
+	screen.SetContent(2, *y, icon, nil, tcell.StyleDefault.Foreground(iconColor))
 
 	// Label
 	labelColor := Text
@@ -158,26 +146,20 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 		labelColor = TextBright
 	}
 	for i, r := range task.Label {
-		style := tcell.StyleDefault.Foreground(labelColor).Background(rowBg)
+		style := tcell.StyleDefault.Foreground(labelColor)
+		if isSelected {
+			style = style.Bold(true)
+		}
 		screen.SetContent(4+i, *y, r, nil, style)
 	}
 
-	// Expand arrow
-	arrow := '▶'
-	if task.Expanded {
-		arrow = '▼'
-	}
-	screen.SetContent(w-2, *y, arrow, nil, tcell.StyleDefault.Foreground(Muted).Background(rowBg))
-
-	// Vertical connector bar for seq
-	if model.Type == "seq" && taskIdx > 0 {
-		connectorColor := Ok
-		if task.Status == "failed" {
-			connectorColor = Failed
-		} else if task.Status == "running" {
-			connectorColor = Running
+	// Expand arrow (hide for pending tasks in seq mode)
+	if !(model.Type == "seq" && task.Status == "pending") {
+		arrow := '▶'
+		if task.Expanded {
+			arrow = '▼'
 		}
-		screen.SetContent(2, *y-1, '│', nil, tcell.StyleDefault.Foreground(connectorColor).Background(Bg))
+		screen.SetContent(w-2, *y, arrow, nil, tcell.StyleDefault.Foreground(Muted))
 	}
 
 	*y++
@@ -203,7 +185,7 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 	}
 
 	for x := 2; x < w-2; x++ {
-		screen.SetContent(x, *y, '─', nil, tcell.StyleDefault.Foreground(borderColor).Background(Bg))
+		screen.SetContent(x, *y, '─', nil, tcell.StyleDefault.Foreground(borderColor))
 	}
 	*y++
 
@@ -233,23 +215,15 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 		*y += panelHeight
 	}
 
-	// Running indicator
-	if task.Status == "running" {
-		spinnerText := " ⠋ running"
-		for i, r := range spinnerText {
-			style := tcell.StyleDefault.Foreground(Running).Background(Bg)
-			screen.SetContent(2+i, *y, r, nil, style)
-		}
-	}
 	*y++
 }
 
-func renderFooter(screen tcell.Screen, model *Model, w, h int) {
+func renderFooter(screen tcell.Screen, model *Model, w, h int, spinnerIdx int) {
 	y := h - 1
 
 	// Clear footer row
 	for x := range w {
-		screen.SetContent(x, y, ' ', nil, tcell.StyleDefault.Background(Bg1))
+		screen.SetContent(x, y, ' ', nil, tcell.StyleDefault)
 	}
 
 	var okCount, runningCount, pendingCount, failedCount int
@@ -269,19 +243,20 @@ func renderFooter(screen tcell.Screen, model *Model, w, h int) {
 	x := 1
 	// Only render non-zero counts, with colored icons
 	if okCount > 0 {
-		x += drawText(screen, x, y, fmt.Sprintf("✓ %d ok", okCount), Ok, Bg1)
+		x += drawText(screen, x, y, fmt.Sprintf("✓ %d ok", okCount), Ok, color.Default)
 		x += 2 // gap
 	}
 	if runningCount > 0 {
-		x += drawText(screen, x, y, fmt.Sprintf("⠋ %d running", runningCount), Running, Bg1)
+		spinnerChar := SpinnerFrames[spinnerIdx]
+		x += drawText(screen, x, y, fmt.Sprintf("%c %d running", spinnerChar, runningCount), Running, color.Default)
 		x += 2
 	}
 	if pendingCount > 0 {
-		x += drawText(screen, x, y, fmt.Sprintf("· %d pending", pendingCount), Pending, Bg1)
+		x += drawText(screen, x, y, fmt.Sprintf("· %d pending", pendingCount), Pending, color.Default)
 		x += 2
 	}
 	if failedCount > 0 {
-		x += drawText(screen, x, y, fmt.Sprintf("✗ %d failed", failedCount), Failed, Bg1)
+		x += drawText(screen, x, y, fmt.Sprintf("✗ %d failed", failedCount), Failed, color.Default)
 	}
 }
 
@@ -297,14 +272,16 @@ func drawText(screen tcell.Screen, x, y int, text string, fg, bg color.Color) in
 }
 
 func vtStyleToTcellStyle(vs vt.Style) tcell.Style {
-	ts := tcell.StyleDefault.Background(Bg)
+	ts := tcell.StyleDefault
 
 	fg := vs.Fg()
-	if fg != color.Default {
+	// color.Silver (XTerm7) is the vterm emulator's default foreground — treat as terminal default
+	if fg != color.Default && fg != color.Silver {
 		ts = ts.Foreground(tcell.Color(fg))
 	}
 	bg := vs.Bg()
-	if bg != color.Default {
+	// color.Black (XTerm0) is the vterm emulator's default background — treat as terminal default
+	if bg != color.Default && bg != color.Black {
 		ts = ts.Background(tcell.Color(bg))
 	}
 

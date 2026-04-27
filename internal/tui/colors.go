@@ -6,12 +6,6 @@ import (
 
 // Color palette matching the JSX C object from the plan
 var (
-	// Background colors
-	Bg  = color.NewRGBColor(0x08, 0x0a, 0x0f) // #080a0f
-	Bg1 = color.NewRGBColor(0x0d, 0x10, 0x17) // #0d1017
-	Bg2 = color.NewRGBColor(0x11, 0x15, 0x20) // #111520
-	Bg3 = color.NewRGBColor(0x16, 0x1b, 0x28) // #161b28
-
 	// Status colors
 	Ok      = color.NewRGBColor(0x4e, 0xc9, 0xa0) // #4ec9a0
 	Running = color.NewRGBColor(0x5b, 0x9c, 0xf6) // #5b9cf6

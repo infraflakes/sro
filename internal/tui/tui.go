@@ -17,7 +17,7 @@ func Run(model *Model) error {
 	}
 	defer screen.Fini()
 
-	screen.SetStyle(tcell.StyleDefault.Background(Bg))
+	screen.SetStyle(tcell.StyleDefault)
 
 	ticker := time.NewTicker(80 * time.Millisecond)
 	defer ticker.Stop()
@@ -43,12 +43,18 @@ func Run(model *Model) error {
 					}
 				case tcell.KeyEnter:
 					if model.Selected >= 0 && model.Selected < len(model.Tasks) {
-						model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+						// Don't allow expansion of pending tasks in seq mode
+						if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+							model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+						}
 					}
 				case tcell.KeyRune:
 					if ev.Str() == " " {
 						if model.Selected >= 0 && model.Selected < len(model.Tasks) {
-							model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+							// Don't allow expansion of pending tasks in seq mode
+							if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+								model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+							}
 						}
 					} else if ev.Str() == "q" {
 						quit = true
@@ -64,7 +70,7 @@ func Run(model *Model) error {
 		// Adjust scroll offset to keep selected task visible
 		_, h := screen.Size()
 		headerHeight := 4
-		footerHeight := 2
+		footerHeight := 1
 		visibleHeight := h - headerHeight - footerHeight
 		if model.Selected < model.ScrollOffset {
 			model.ScrollOffset = model.Selected
@@ -131,7 +137,7 @@ func RunWithContext(ctx context.Context, model *Model) error {
 	}
 	defer screen.Fini()
 
-	screen.SetStyle(tcell.StyleDefault.Background(Bg))
+	screen.SetStyle(tcell.StyleDefault)
 
 	ticker := time.NewTicker(80 * time.Millisecond)
 	defer ticker.Stop()
@@ -159,12 +165,18 @@ func RunWithContext(ctx context.Context, model *Model) error {
 					}
 				case tcell.KeyEnter:
 					if model.Selected >= 0 && model.Selected < len(model.Tasks) {
-						model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+						// Don't allow expansion of pending tasks in seq mode
+						if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+							model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+						}
 					}
 				case tcell.KeyRune:
 					if ev.Str() == " " {
 						if model.Selected >= 0 && model.Selected < len(model.Tasks) {
-							model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+							// Don't allow expansion of pending tasks in seq mode
+							if !(model.Type == "seq" && model.Tasks[model.Selected].Status == "pending") {
+								model.Tasks[model.Selected].Expanded = !model.Tasks[model.Selected].Expanded
+							}
 						}
 					} else if ev.Str() == "q" {
 						quit = true
@@ -180,7 +192,7 @@ func RunWithContext(ctx context.Context, model *Model) error {
 		// Adjust scroll offset to keep selected task visible
 		_, h := screen.Size()
 		headerHeight := 4
-		footerHeight := 2
+		footerHeight := 1
 		visibleHeight := h - headerHeight - footerHeight
 		if model.Selected < model.ScrollOffset {
 			model.ScrollOffset = model.Selected
