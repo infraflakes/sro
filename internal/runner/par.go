@@ -23,7 +23,9 @@ func (r *Runner) RunParWithWriter(name string, writer io.Writer) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	fmt.Fprintf(writer, "par %s\n", par.Name)
+	if !r.SuppressHeaders {
+		fmt.Fprintf(writer, "par %s\n", par.Name)
+	}
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex

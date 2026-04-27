@@ -13,8 +13,8 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	screen.Fill(' ', tcell.StyleDefault.Background(Bg))
 
 	// Calculate header height
-	headerHeight := 3 // header + type note
-	footerHeight := 1
+	headerHeight := 4 // header + type note + separator
+	footerHeight := 2 // separator + footer
 	visibleHeight := h - headerHeight - footerHeight
 
 	// Calculate which tasks are visible based on ScrollOffset
@@ -31,6 +31,12 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 	renderTypeNote(screen, model, w, &y)
 	y++
 
+	// Separator line between header and tasks
+	for x := range w {
+		screen.SetContent(x, y, '─', nil, tcell.StyleDefault.Foreground(Dim).Background(Bg))
+	}
+	y++
+
 	// Task rows (only visible ones)
 	for i := startTask; i < endTask; i++ {
 		renderTaskRow(screen, model, i, w, &y, spinnerIdx)
@@ -38,6 +44,12 @@ func Render(screen tcell.Screen, model *Model, spinnerIdx int) {
 			renderExpandedPanel(screen, &model.Tasks[i], w, &y)
 		}
 	}
+
+	// Footer separator line
+	for x := range w {
+		screen.SetContent(x, y, '─', nil, tcell.StyleDefault.Foreground(Dim).Background(Bg))
+	}
+	y++
 
 	// Footer
 	renderFooter(screen, model, w, h)
@@ -75,29 +87,7 @@ func renderHeader(screen tcell.Screen, model *Model, w int, y *int) {
 		screen.SetContent(offset+i, *y, r, nil, style)
 	}
 
-	// Status with spinner
-	var statusText string
-	var statusColor tcell.Color
-	switch model.Status {
-	case "running":
-		statusText = " running"
-		statusColor = Running
-	case "ok":
-		statusText = " ok"
-		statusColor = Ok
-	case "failed":
-		statusText = " failed"
-		statusColor = Failed
-	default:
-		statusText = " unknown"
-		statusColor = Muted
-	}
-
-	statusOffset := w - len(statusText)
-	for i, r := range statusText {
-		style := tcell.StyleDefault.Foreground(statusColor).Background(Bg1)
-		screen.SetContent(statusOffset+i, *y, r, nil, style)
-	}
+	*y++
 }
 
 func renderTypeNote(screen tcell.Screen, model *Model, w int, y *int) {
@@ -257,6 +247,11 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 func renderFooter(screen tcell.Screen, model *Model, w, h int) {
 	y := h - 1
 
+	// Clear footer row
+	for x := range w {
+		screen.SetContent(x, y, ' ', nil, tcell.StyleDefault.Background(Bg1))
+	}
+
 	var okCount, runningCount, pendingCount, failedCount int
 	for _, task := range model.Tasks {
 		switch task.Status {
@@ -271,13 +266,34 @@ func renderFooter(screen tcell.Screen, model *Model, w, h int) {
 		}
 	}
 
-	footerText := fmt.Sprintf(" %d tasks | %d ok | %d running | %d pending | %d failed ",
-		len(model.Tasks), okCount, runningCount, pendingCount, failedCount)
-
-	for i, r := range footerText {
-		style := tcell.StyleDefault.Foreground(Muted).Background(Bg1)
-		screen.SetContent(i, y, r, nil, style)
+	x := 1
+	// Only render non-zero counts, with colored icons
+	if okCount > 0 {
+		x += drawText(screen, x, y, fmt.Sprintf("✓ %d ok", okCount), Ok, Bg1)
+		x += 2 // gap
 	}
+	if runningCount > 0 {
+		x += drawText(screen, x, y, fmt.Sprintf("⠋ %d running", runningCount), Running, Bg1)
+		x += 2
+	}
+	if pendingCount > 0 {
+		x += drawText(screen, x, y, fmt.Sprintf("· %d pending", pendingCount), Pending, Bg1)
+		x += 2
+	}
+	if failedCount > 0 {
+		x += drawText(screen, x, y, fmt.Sprintf("✗ %d failed", failedCount), Failed, Bg1)
+	}
+}
+
+// Helper to draw colored text, returns number of cells written
+func drawText(screen tcell.Screen, x, y int, text string, fg, bg color.Color) int {
+	style := tcell.StyleDefault.Foreground(fg).Background(bg)
+	i := 0
+	for _, r := range text {
+		screen.SetContent(x+i, y, r, nil, style)
+		i++
+	}
+	return i
 }
 
 func vtStyleToTcellStyle(vs vt.Style) tcell.Style {

@@ -20,7 +20,9 @@ func (r *Runner) RunSeqWithWriter(name string, writer io.Writer) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	fmt.Fprintf(writer, "seq %s\n", seq.Name)
+	if !r.SuppressHeaders {
+		fmt.Fprintf(writer, "seq %s\n", seq.Name)
+	}
 	return r.executeSeqWithWriter(seq, writer)
 }
 

@@ -11,17 +11,18 @@ import (
 )
 
 type Runner struct {
-	cfg    *config.Config
-	Writer io.Writer
-	Ctx    context.Context
+	cfg             *config.Config
+	Writer          io.Writer
+	Ctx             context.Context
+	SuppressHeaders bool
 }
 
 func New(cfg *config.Config) *Runner {
-	return &Runner{cfg: cfg, Writer: os.Stdout, Ctx: context.Background()}
+	return &Runner{cfg: cfg, Writer: os.Stdout, Ctx: context.Background(), SuppressHeaders: false}
 }
 
 func NewWithContext(cfg *config.Config, ctx context.Context) *Runner {
-	return &Runner{cfg: cfg, Writer: os.Stdout, Ctx: ctx}
+	return &Runner{cfg: cfg, Writer: os.Stdout, Ctx: ctx, SuppressHeaders: false}
 }
 
 func (r *Runner) ExecuteFnCall(call *ast.FnCall) error {
@@ -38,7 +39,9 @@ func (r *Runner) ExecuteFnCall(call *ast.FnCall) error {
 	if writer == nil {
 		writer = os.Stdout
 	}
-	fmt.Fprintf(writer, "\033[38;2;91;156;246m%s\033[0m(pr.%s)\n", call.FnName, call.ProjectName)
+	if !r.SuppressHeaders {
+		fmt.Fprintf(writer, "\033[38;2;91;156;246m%s\033[0m(pr.%s)\n", call.FnName, call.ProjectName)
+	}
 	ctx := newExecContext(r.cfg, proj, writer)
 	return ctx.execFnBody(fn.Body)
 }

@@ -27,6 +27,7 @@ var (
 	Muted      = color.NewRGBColor(0x4a, 0x58, 0x78) // #4a5878
 	Text       = color.NewRGBColor(0xb8, 0xc4, 0xe8) // #b8c4e8
 	TextBright = color.NewRGBColor(0xd8, 0xe2, 0xf8) // #d8e2f8
+	Dim        = color.NewRGBColor(0x2a, 0x35, 0x48) // #2a3548
 
 	// Annotation colors
 	LogC  = color.NewRGBColor(0xff, 0xcb, 0x6b) // #ffcb6b

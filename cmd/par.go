@@ -59,6 +59,7 @@ func runPar(name string) {
 		label := labelForStmt(stmt)
 		vterm := vt.NewMockTerm(vt.MockOptSize(vt.Coord{X: 120, Y: 100}))
 		vterm.Start()
+		vterm.Write([]byte("\x1b[20h")) // enable newline mode: LF implies CR
 		model.Tasks = append(model.Tasks, tui.Task{
 			Label:    label,
 			Status:   "pending",
@@ -86,6 +87,7 @@ func runPar(name string) {
 
 				r := runner.NewWithContext(cfg, ctx)
 				r.Writer = model.Tasks[idx].VTerm
+				r.SuppressHeaders = true
 
 				var err error
 				switch stmt := s.(type) {

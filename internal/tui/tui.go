@@ -63,8 +63,8 @@ func Run(model *Model) error {
 
 		// Adjust scroll offset to keep selected task visible
 		_, h := screen.Size()
-		headerHeight := 3
-		footerHeight := 1
+		headerHeight := 4
+		footerHeight := 2
 		visibleHeight := h - headerHeight - footerHeight
 		if model.Selected < model.ScrollOffset {
 			model.ScrollOffset = model.Selected
@@ -179,8 +179,8 @@ func RunWithContext(ctx context.Context, model *Model) error {
 
 		// Adjust scroll offset to keep selected task visible
 		_, h := screen.Size()
-		headerHeight := 3
-		footerHeight := 1
+		headerHeight := 4
+		footerHeight := 2
 		visibleHeight := h - headerHeight - footerHeight
 		if model.Selected < model.ScrollOffset {
 			model.ScrollOffset = model.Selected
