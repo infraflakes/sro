@@ -167,8 +167,7 @@ func renderTaskRow(screen tcell.Screen, model *Model, taskIdx int, w int, y *int
 
 func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 	_, termH := screen.Size()
-	availableHeight := termH - *y - 3 // leave room for footer and other tasks
-	panelHeight := min(10, max(3, availableHeight))
+	availableHeight := termH - *y - 3 // leave room for footer and remaining tasks
 	panelWidth := w - 4
 
 	// Top border matching task status
@@ -191,13 +190,31 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 
 	// Blit cells from vterm
 	if task.VTerm != nil {
+		cursorPos := task.VTerm.Pos()
+		actualLines := int(cursorPos.Y) + 1 // cursor Y is 0-indexed
+
+		// Cap at a max threshold, but don't exceed available space
+		maxPanelHeight := min(15, max(1, availableHeight))
+		panelHeight := min(actualLines, maxPanelHeight)
+
+		// Number of pruned (hidden) lines
+		prunedCount := actualLines - panelHeight
+		startRow := max(actualLines-panelHeight, 0)
+
+		// Pruned indicator (only if lines were hidden)
+		if prunedCount > 0 {
+			prunedText := fmt.Sprintf(" ↑ %d lines hidden ", prunedCount)
+			for i, r := range prunedText {
+				screen.SetContent(2+i, *y, r, nil, tcell.StyleDefault.Foreground(Dim))
+			}
+			*y++
+			// Reduce panelHeight by 1 to account for the pruned indicator row
+			panelHeight = max(1, panelHeight-1)
+			startRow = max(actualLines-panelHeight, 0)
+		}
+
 		be := task.VTerm.Backend()
 		vtSize := be.GetSize()
-
-		// Show the last panelHeight rows (auto-scroll to bottom)
-		cursorPos := task.VTerm.Pos()
-		startRow := max(int(cursorPos.Y)-panelHeight+1, 0)
-
 		for row := 0; row < panelHeight && vt.Row(startRow+row) < vtSize.Y; row++ {
 			for col := vt.Col(0); col < vtSize.X && int(col) < panelWidth; col++ {
 				cell := be.GetCell(vt.Coord{X: col, Y: vt.Row(startRow + row)})
@@ -212,10 +229,11 @@ func renderExpandedPanel(screen tcell.Screen, task *Task, w int, y *int) {
 			*y++
 		}
 	} else {
-		*y += panelHeight
+		// No vterm — just skip 1 line
+		*y++
 	}
 
-	*y++
+	*y++ // spacing after panel
 }
 
 func renderFooter(screen tcell.Screen, model *Model, w, h int, spinnerIdx int) {

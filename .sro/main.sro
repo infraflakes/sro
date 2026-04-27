@@ -35,12 +35,12 @@ seq build {
 }
 
 seq test {
-  init(pr.sro);
   check(pr.sro);
   test(pr.sro);
 }
 
 par all {
+  init(pr.sro);
   build(pr.sro);
   seq.test;
 }
