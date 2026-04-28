@@ -71,6 +71,7 @@ func runSync() {
 
 	// Run sync concurrently — one goroutine per project (like par.go)
 	ctx, cancel := context.WithCancel(context.Background())
+	model.CancelFunc = cancel
 	defer cancel()
 
 	go func() {

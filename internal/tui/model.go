@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -16,6 +17,7 @@ type Model struct {
 	Selected     int // keyboard cursor position
 	ScrollOffset int // viewport scroll offset
 	Mu           sync.Mutex
+	CancelFunc   context.CancelFunc // called on TUI exit to cancel background tasks
 }
 
 type Task struct {

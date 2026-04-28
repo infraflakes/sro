@@ -122,22 +122,19 @@ func RunWithContext(ctx context.Context, model *Model) error {
 		if model.Selected < len(taskHeights) {
 			selectedHeight = taskHeights[model.Selected]
 		}
-		// Only scroll if the selected task is completely out of view
-		if yBefore >= visibleHeight {
-			// Scroll so the selected task is visible at the bottom
+		// Scroll if the selected task's bottom would be out of view
+		if yBefore+selectedHeight > visibleHeight {
 			// Walk backwards from Selected to find the right ScrollOffset
+			// Start with selected task at the bottom and walk up
 			remaining := visibleHeight - selectedHeight
 			model.ScrollOffset = model.Selected
-			for model.ScrollOffset > 0 {
-				remaining -= taskHeights[model.ScrollOffset-1]
-				if remaining <= 0 {
-					break
-				}
+			for model.ScrollOffset > 0 && remaining > 0 {
 				model.ScrollOffset--
+				remaining -= taskHeights[model.ScrollOffset]
 			}
-			// Ensure we don't scroll past the selected task
-			if model.ScrollOffset > model.Selected {
-				model.ScrollOffset = model.Selected
+			// Ensure we don't scroll past the start
+			if model.ScrollOffset < 0 {
+				model.ScrollOffset = 0
 			}
 		}
 		model.Mu.Unlock()
@@ -149,12 +146,15 @@ func RunWithContext(ctx context.Context, model *Model) error {
 		screen.Show()
 	}
 
-	// Stop all vterms on exit
+	// Stop all vterms on exit and cancel background tasks
 	model.Mu.Lock()
 	for i := range model.Tasks {
 		if model.Tasks[i].VTerm != nil {
 			_ = model.Tasks[i].VTerm.Stop()
 		}
+	}
+	if model.CancelFunc != nil {
+		model.CancelFunc()
 	}
 	model.Mu.Unlock()
 

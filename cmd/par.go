@@ -69,6 +69,7 @@ func runPar(name string) {
 
 	// Run par in background goroutine
 	ctx, cancel := context.WithCancel(context.Background())
+	model.CancelFunc = cancel
 	defer cancel()
 
 	go func() {

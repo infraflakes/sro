@@ -68,6 +68,7 @@ func runSeq(name string) {
 
 	// Run seq in background goroutine
 	ctx, cancel := context.WithCancel(context.Background())
+	model.CancelFunc = cancel
 	defer cancel()
 
 	go func() {
