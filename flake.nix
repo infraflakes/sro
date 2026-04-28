@@ -38,7 +38,7 @@
           inherit version;
           src = ./.;
 
-          vendorHash = "sha256-GOjUhJmKYHMK/wQwaNmpuPrvicakkIfb1/8u00WcynM=";
+          vendorHash = "sha256-UTjVVIabxsK7clDsE4+0FrCea1QAGBn9l85xdE9zvIk=";
 
           env.CGO_ENABLED = "0";
 
