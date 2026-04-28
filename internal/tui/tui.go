@@ -122,13 +122,14 @@ func RunWithContext(ctx context.Context, model *Model) error {
 		if model.Selected < len(taskHeights) {
 			selectedHeight = taskHeights[model.Selected]
 		}
-		if yBefore+selectedHeight > visibleHeight {
-			// Scroll so the selected task's bottom edge is visible
+		// Only scroll if the selected task is completely out of view
+		if yBefore >= visibleHeight {
+			// Scroll so the selected task is visible at the bottom
 			// Walk backwards from Selected to find the right ScrollOffset
-			remaining := visibleHeight
+			remaining := visibleHeight - selectedHeight
 			model.ScrollOffset = model.Selected
 			for model.ScrollOffset > 0 {
-				remaining -= taskHeights[model.ScrollOffset]
+				remaining -= taskHeights[model.ScrollOffset-1]
 				if remaining <= 0 {
 					break
 				}
