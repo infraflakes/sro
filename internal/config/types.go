@@ -13,9 +13,10 @@ type Config struct {
 }
 
 type Project struct {
-	Name string
-	URL  string
-	Dir  string
-	Sync string // "clone" (default) or "ignore"
-	Use  string // optional, path to .sro file inside the project repo
+	Name   string
+	URL    string
+	Dir    string
+	Sync   string // "clone" (default) or "ignore"
+	Use    string // optional, path to .sro file inside the project repo
+	Branch string // optional, branch to clone
 }

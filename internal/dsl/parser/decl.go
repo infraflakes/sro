@@ -149,7 +149,7 @@ func (p *Parser) parseProjectDecl() ast.Stmt {
 			return nil
 		}
 		key := p.curToken.Literal
-		validKeys := map[string]bool{"url": true, "dir": true, "sync": true, "use": true}
+		validKeys := map[string]bool{"url": true, "dir": true, "sync": true, "use": true, "branch": true}
 		if !validKeys[key] {
 			p.errors = append(p.errors, ParseError{
 				Message: fmt.Sprintf("invalid project field key '%s'", key),

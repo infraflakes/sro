@@ -12,12 +12,12 @@ import (
 func TestParseSeqAndPar(t *testing.T) {
 	input := `
 seq build {
-    check(pr.todo);
-    build(pr.todo);
+    check(todo);
+    build(todo);
 }
 par test {
     seq.init;
-    test(pr.calendar);
+    test(calendar);
 }`
 	l := lexer.New(input)
 	p := New(l)
@@ -92,7 +92,7 @@ func TestParseEmptySeqAndPar(t *testing.T) {
 }
 
 func TestFullFile(t *testing.T) {
-	input := "sanctuary = `$HOME/dev`;\nimport [ ./other_config.sro, ./example/work.sro ];\nvar string port1 = `127.0.0.1:8080`;\nvar string port2 = `192.168.1.3:2425`;\nvar string port3 = `${port1}`;\nvar string idx_port = `3`;\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}\nfn init {\n    log(`Installing dependencies!`);\n    var string deps = `4`;\n    log(`Currently we have ${deps} dependencies!`);\n    cd(`cmd`);\n    env [\n          GOFLAGS = `-mod=mod`,\n          CGO_ENABLED = `0`,\n          DB_URL = `postgres://localhost:5432`\n        ] {\n          env [CGO_ENABLED = `1`] {\n            exec(`go build .`);\n          };\n          exec(`go mod download`);\n          exec(`go generate ./...`);\n        };\n    cd(`.`);\n    exec(`go test ./...`);\n    exec(`staticcheck ./...`);\n}\nseq init {\n    check(pr.todo);\n    init(pr.calendar-ts);\n}\npar ci {\n    build(pr.todo);\n    seq.init;\n}"
+	input := "sanctuary = `$HOME/dev`;\nimport [ ./other_config.sro, ./example/work.sro ];\nvar string port1 = `127.0.0.1:8080`;\nvar string port2 = `192.168.1.3:2425`;\nvar string port3 = `${port1}`;\nvar string idx_port = `3`;\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}\nfn init {\n    log(`Installing dependencies!`);\n    var string deps = `4`;\n    log(`Currently we have ${deps} dependencies!`);\n    cd(`cmd`);\n    env [\n          GOFLAGS = `-mod=mod`,\n          CGO_ENABLED = `0`,\n          DB_URL = `postgres://localhost:5432`\n        ] {\n          env [CGO_ENABLED = `1`] {\n            exec(`go build .`);\n          };\n          exec(`go mod download`);\n          exec(`go generate ./...`);\n        };\n    cd(`.`);\n    exec(`go test ./...`);\n    exec(`staticcheck ./...`);\n}\nseq init {\n    check(todo);\n    init(calendar-ts);\n}\npar ci {\n    build(todo);\n    seq.init;\n}"
 	l := lexer.New(input)
 	p := New(l)
 	prog := p.ParseProgram()

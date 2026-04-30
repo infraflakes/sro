@@ -32,6 +32,15 @@ func makeRepo(t *testing.T, dir string) {
 	}
 	run("add", "README.md")
 	run("commit", "-m", "initial commit")
+	// Create a feature branch
+	run("checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(dir, "FEATURE.md"), []byte("# feature"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "FEATURE.md")
+	run("commit", "-m", "feature commit")
+	// Go back to main
+	run("checkout", "-b", "main")
 }
 
 func TestRun_CloneNewRepo(t *testing.T) {
@@ -208,6 +217,49 @@ func TestRun_CloneFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to clone bad") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRun_CloneSpecificBranch(t *testing.T) {
+	sanctuary := t.TempDir()
+	repoDir := t.TempDir()
+	makeRepo(t, repoDir)
+
+	cfg := &config.Config{
+		Sanctuary: sanctuary,
+		Projects: map[string]*config.Project{
+			"test": {
+				Name:   "test",
+				URL:    repoDir,
+				Dir:    "cloned",
+				Sync:   "clone",
+				Branch: "feature",
+			},
+		},
+	}
+
+	if err := Run(cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	clonedPath := filepath.Join(sanctuary, "cloned")
+	if _, err := os.Stat(clonedPath); err != nil {
+		t.Fatalf("cloned dir does not exist: %v", err)
+	}
+	// Verify we're on the feature branch
+	cmd := exec.Command("git", "-C", clonedPath, "branch", "--show-current")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git branch failed: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "feature" {
+		t.Fatalf("expected branch 'feature', got %s", branch)
+	}
+	// Verify the feature file exists
+	featurePath := filepath.Join(clonedPath, "FEATURE.md")
+	if _, err := os.Stat(featurePath); err != nil {
+		t.Fatalf("feature file does not exist: %v", err)
 	}
 }
 

@@ -14,8 +14,8 @@ func FuzzParseProgram(f *testing.F) {
 	f.Add("var string x = `hello`;")
 	f.Add("pr foo { url = `http://example.com`; dir = `foo`; }")
 	f.Add("fn test { log(`hello`); }")
-	f.Add("seq myseq { fn test(pr.foo); }")
-	f.Add("par mypar { fn test(pr.foo); }")
+	f.Add("seq myseq { test(foo); }")
+	f.Add("par mypar { test(foo); }")
 	f.Add("shell = `bash`;")
 	f.Add("import [ ./a.sro ];")
 
@@ -193,7 +193,7 @@ func TestParseProjectDeclDuplicateFields(t *testing.T) {
 }
 
 func TestParseProjectDecl(t *testing.T) {
-	input := "\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n}"
+	input := "\npr todo {\n    url = `git@github.com:yourname/todo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n    branch = `main`;\n}"
 	l := lexer.New(input)
 	p := New(l)
 	prog := p.ParseProgram()
@@ -210,14 +210,15 @@ func TestParseProjectDecl(t *testing.T) {
 	if proj.Name != "todo" {
 		t.Fatalf("project name: want 'todo', got %s", proj.Name)
 	}
-	if len(proj.Fields) != 4 {
-		t.Fatalf("expected 4 fields, got %d", len(proj.Fields))
+	if len(proj.Fields) != 5 {
+		t.Fatalf("expected 5 fields, got %d", len(proj.Fields))
 	}
 	expected := map[string]string{
-		"url":  "git@github.com:yourname/todo.git",
-		"dir":  "todo",
-		"sync": "clone",
-		"use":  "./main.sro",
+		"url":    "git@github.com:yourname/todo.git",
+		"dir":    "todo",
+		"sync":   "clone",
+		"use":    "./main.sro",
+		"branch": "main",
 	}
 	for _, f := range proj.Fields {
 		want, ok := expected[f.Key]

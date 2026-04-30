@@ -19,7 +19,7 @@ func TestResolveUse(t *testing.T) {
 
 	// Create a use file inside the project directory
 	useFile := filepath.Join(projDir, "use.sro")
-	useContent := "var string usevar = `from-use`;\nfn usefn { log(`from-use`); }\nseq useseq { usefn(pr.test); }\npar usepar { usefn(pr.test); }\n"
+	useContent := "var string usevar = `from-use`;\nfn usefn { log(`from-use`); }\nseq useseq { usefn(test); }\npar usepar { usefn(test); }\n"
 	if err := os.WriteFile(useFile, []byte(useContent), 0o644); err != nil {
 		t.Fatal(err)
 	}

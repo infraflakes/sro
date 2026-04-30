@@ -109,12 +109,6 @@ func (p *Parser) parseFnCall() *ast.FnCall {
 	if !p.expectPeek(token.LPAREN) {
 		return nil
 	}
-	if !p.expectPeek(token.PR) {
-		return nil
-	}
-	if !p.expectPeek(token.DOT) {
-		return nil
-	}
 	if !p.expectPeek(token.IDENT) {
 		return nil
 	}

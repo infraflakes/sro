@@ -43,7 +43,11 @@ func SyncProjectWithContext(ctx context.Context, cfg *config.Config, proj *confi
 	}
 
 	_, _ = fmt.Fprintf(writer, "  clone  %s → %s\n", proj.Name, targetDir)
-	cmd := exec.CommandContext(ctx, "git", "clone", proj.URL, targetDir)
+	args := []string{"clone", proj.URL, targetDir}
+	if proj.Branch != "" {
+		args = []string{"clone", "-b", proj.Branch, proj.URL, targetDir}
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Stdout = writer
 	cmd.Stderr = writer
 	err := cmd.Run()

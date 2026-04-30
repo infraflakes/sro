@@ -42,7 +42,7 @@ func (r *Runner) RunParWithWriter(name string, writer io.Writer) error {
 				r.Writer = writer
 				if err := r.executeFnCall(call); err != nil {
 					mu.Lock()
-					errs = append(errs, fmt.Errorf("%s(pr.%s): %w", call.FnName, call.ProjectName, err))
+					errs = append(errs, fmt.Errorf("%s(%s): %w", call.FnName, call.ProjectName, err))
 					mu.Unlock()
 				}
 			}(s)

@@ -268,7 +268,7 @@ func TestDuplicateFnSeqParNames(t *testing.T) {
 		t.Fatalf("expected duplicate function error, got: %v", err)
 	}
 
-	content2 := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\nseq dup { check(pr.test); }\nseq dup { build(pr.test); }"
+	content2 := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\nseq dup { check(test); }\nseq dup { build(test); }"
 	if err := os.WriteFile(file, []byte(content2), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestDuplicateFnSeqParNames(t *testing.T) {
 		t.Fatalf("expected duplicate seq error, got: %v", err)
 	}
 
-	content3 := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\npar dup { check(pr.test); }\npar dup { build(pr.test); }"
+	content3 := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\npar dup { check(test); }\npar dup { build(test); }"
 	if err := os.WriteFile(file, []byte(content3), 0o644); err != nil {
 		t.Fatal(err)
 	}

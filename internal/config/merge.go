@@ -127,6 +127,8 @@ func mergeProjectDecl(cfg *Config, s *ast.ProjectDecl) error {
 			proj.Sync = resolved
 		case "use":
 			proj.Use = resolved
+		case "branch":
+			proj.Branch = resolved
 		}
 	}
 	cfg.Projects[s.Name] = proj
