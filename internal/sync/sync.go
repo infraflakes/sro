@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 
-	git "github.com/go-git/go-git/v5"
 	"github.com/infraflakes/sro/internal/config"
 )
 
@@ -43,10 +43,10 @@ func SyncProjectWithContext(ctx context.Context, cfg *config.Config, proj *confi
 	}
 
 	_, _ = fmt.Fprintf(writer, "  clone  %s → %s\n", proj.Name, targetDir)
-	_, err := git.PlainCloneContext(ctx, targetDir, false, &git.CloneOptions{
-		URL:      proj.URL,
-		Progress: writer,
-	})
+	cmd := exec.CommandContext(ctx, "git", "clone", proj.URL, targetDir)
+	cmd.Stdout = writer
+	cmd.Stderr = writer
+	err := cmd.Run()
 	if err != nil {
 		return fmt.Errorf("failed to clone %s: %w", proj.Name, err)
 	}
