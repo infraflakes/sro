@@ -55,3 +55,29 @@ func NewLineCountingWriter(writer io.Writer, totalLines *int64) io.Writer {
 		totalLines: totalLines,
 	}
 }
+
+// TaskRenderedHeight returns the total rows a task occupies when rendered.
+// This must stay in sync with renderExpandedPanel's layout.
+func TaskRenderedHeight(task *Task) int {
+	h := 1 // collapsed task row
+	if task.Expanded && task.VTerm != nil {
+		cursorPos := task.VTerm.Pos()
+		actualLines := int(cursorPos.Y) + 1
+
+		const minPanelHeight = 3
+		const maxPanelCap = 15
+
+		panelHeight := min(actualLines, maxPanelCap)
+		panelHeight = max(panelHeight, min(actualLines, minPanelHeight))
+
+		prunedCount := actualLines - panelHeight
+		if prunedCount > 0 {
+			// Pruned indicator takes 1 row, content is reduced by 1
+			h += 1 + panelHeight - 1 + 1 // pruned indicator + content + spacing
+			// Simplifies to: h += panelHeight + 1
+		} else {
+			h += panelHeight + 1 // content + spacing
+		}
+	}
+	return h
+}
