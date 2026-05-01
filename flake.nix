@@ -38,7 +38,7 @@
           inherit version;
           src = ./.;
 
-          vendorHash = "sha256-UTjVVIabxsK7clDsE4+0FrCea1QAGBn9l85xdE9zvIk=";
+          vendorHash = "sha256-FmrCSNInn0fmtN2pwQ5gmFcXAGTWZ0t7KxEkiXqSTJI=";
 
           env.CGO_ENABLED = "0";
 
@@ -67,7 +67,7 @@
           ];
 
           shellHook = ''
-            export GOPATH="$PWD/.go"
+            export GOPATH="$TMPDIR/.go"
             export PATH="$GOPATH/bin:$PATH"
           '';
         };

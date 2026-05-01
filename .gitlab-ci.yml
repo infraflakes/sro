@@ -1,0 +1,31 @@
+default:
+  tags:
+    - nixos
+    - x64
+
+workflow:
+  rules:
+    - changes:
+        - "**/*.go"
+        - "**/*.nix"
+
+stages:
+  - lint
+  - test
+  - build
+
+lint-job:
+  stage: lint
+  script:
+    - nix develop -c golangci-lint run
+
+test-job:
+  stage: test
+  script:
+    - nix develop -c go test ./... -v
+
+build-job:
+  stage: build
+  script:
+    - nix develop -c go build ./...
+    - nix build .#default
