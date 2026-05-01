@@ -86,21 +86,10 @@ func RunWithContext(ctx context.Context, model *Model) error {
 		headerHeight := 4
 		footerHeight := 4
 
-		// Calculate the rendered height of each task (1 row collapsed, 1 + panelHeight expanded)
 		model.Mu.Lock()
 		taskHeights := make([]int, len(model.Tasks))
-		for i, task := range model.Tasks {
-			taskHeights[i] = 1 // collapsed row
-			if task.Expanded && task.VTerm != nil {
-				cursorPos := task.VTerm.Pos()
-				actualLines := int(cursorPos.Y) + 1
-				panelHeight := min(actualLines, 15)
-				panelHeight = max(panelHeight, min(actualLines, 3))
-				if actualLines > panelHeight {
-					panelHeight++ // pruned indicator row
-				}
-				taskHeights[i] += panelHeight + 1 // +1 for spacing after panel
-			}
+		for i := range model.Tasks {
+			taskHeights[i] = TaskRenderedHeight(&model.Tasks[i])
 		}
 		visibleHeight := h - headerHeight - footerHeight
 
@@ -124,17 +113,39 @@ func RunWithContext(ctx context.Context, model *Model) error {
 		}
 		// Scroll if the selected task's bottom would be out of view
 		if yBefore+selectedHeight > visibleHeight {
-			// Walk backwards from Selected to find the right ScrollOffset
-			// Start with selected task at the bottom and walk up
 			remaining := visibleHeight - selectedHeight
 			model.ScrollOffset = model.Selected
 			for model.ScrollOffset > 0 && remaining > 0 {
 				model.ScrollOffset--
 				remaining -= taskHeights[model.ScrollOffset]
 			}
-			// Ensure we don't scroll past the start
+			// If remaining went negative, the task at ScrollOffset is too tall to fit
+			// above the selected task — bump ScrollOffset forward so selected is visible
+			if remaining < 0 && model.ScrollOffset < model.Selected {
+				model.ScrollOffset++
+			}
 			if model.ScrollOffset < 0 {
 				model.ScrollOffset = 0
+			}
+		}
+
+		// Ensure selected task gets minimum display space if expanded
+		if model.Selected < len(model.Tasks) && model.Tasks[model.Selected].Expanded {
+			// Recalculate yBefore with new ScrollOffset
+			yBefore = 0
+			for i := model.ScrollOffset; i < model.Selected; i++ {
+				yBefore += taskHeights[i]
+			}
+			// Minimum space needed: task row + minPanelHeight(3) + spacing(1) + possible pruned indicator(1) = 6
+			const minTaskSpace = 6
+			requiredSpace := minTaskSpace
+			if selectedHeight > 0 && selectedHeight < requiredSpace {
+				requiredSpace = selectedHeight
+			}
+			for yBefore+requiredSpace > visibleHeight && model.ScrollOffset < model.Selected {
+
+				yBefore -= taskHeights[model.ScrollOffset]
+				model.ScrollOffset++
 			}
 		}
 		model.Mu.Unlock()

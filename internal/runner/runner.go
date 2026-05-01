@@ -51,7 +51,7 @@ func (r *Runner) ExecuteFnCall(call *ast.FnCall) error {
 		writer = os.Stdout
 	}
 	if !r.SuppressHeaders {
-		_, _ = fmt.Fprintf(writer, "\033[38;2;91;156;246m%s\033[0m(pr.%s)\n", call.FnName, call.ProjectName)
+		_, _ = fmt.Fprintf(writer, "\033[38;2;91;156;246m%s\033[0m(%s)\n", call.FnName, call.ProjectName)
 	}
 	ctx := newExecContextWithContext(r.Ctx, r.cfg, proj, writer)
 	return ctx.execFnBody(fn.Body)

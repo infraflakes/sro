@@ -78,7 +78,7 @@ func TestInvalidSyncValue(t *testing.T) {
 func TestSeqParReferenceValidation(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := "shell = `bash`;\nsanctuary = `/tmp`;\nfn real { log(`hi`); }\nseq s { unknown(pr.p); }\npar p { fake(pr.q); }\n"
+	content := "shell = `bash`;\nsanctuary = `/tmp`;\nfn real { log(`hi`); }\nseq s { unknown(p); }\npar p { fake(q); }\n"
 	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestValidSeqParReferences(t *testing.T) {
 	// C8: valid seq/par references (happy path)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "main.sro")
-	content := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\nfn real { log(`hi`); }\nseq s { real(pr.test); }\npar p { seq.s; }"
+	content := "shell = `bash`;\nsanctuary = `/tmp`;\npr test { url = `http://example.com`; dir = `test`; }\nfn real { log(`hi`); }\nseq s { real(test); }\npar p { seq.s; }"
 	if err := os.WriteFile(file, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}

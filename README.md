@@ -7,6 +7,11 @@
 
 <img src="./examples/tui_example.png" alt="TUI" width="600">
 
+> [!CAUTION]
+> Main development happens on [Gitlab](https://gitlab.com/infraflakes/sro).
+>
+> The [Github repository](https://github.com/infraflakes/sro) is just a mirror!
+
 ---
 
 ## The problem
@@ -88,13 +93,13 @@ fn test {
 }
 
 seq release {
-    test(pr.todo);
-    build(pr.todo);
+    test(todo);
+    build(todo);
 }
 
 par ci {
-    build(pr.todo);
-    build(pr.calendar);
+    build(todo);
+    build(calendar);
     seq.release;
 }
 ```
@@ -125,6 +130,7 @@ par ci {
 | `dir` | yes | directory name relative to sanctuary, must be unique |
 | `sync` | no | `clone` (default) — skip if exists. `ignore` — skip entirely |
 | `use` | no | path to a `.sro` file inside the project, relative to project dir |
+| `branch` | no | branch to clone. defaults to repo default branch |
 
 ### fn primitives
 
@@ -140,7 +146,7 @@ par ci {
 
 | statement | description |
 |-----------|-------------|
-| `fnname(pr.project);` | call fn with project as cwd context |
+| `fnname(project);` | call fn with project as cwd context |
 | `seq.name;` | reference another seq block |
 
 `par.name` cannot be referenced — par blocks are CLI entry points only.
@@ -201,8 +207,8 @@ fn dev {
 ```
 par  ci                                                3 tasks
 
- ✓  build(pr.todo)                                          ▶
- ⠋  build(pr.calendar)                                      ▼
+ ✓  build(todo)                                          ▶
+ ⠋  build(calendar)                                      ▼
     log  Building project...
     var  version = 3a1b2c4
     env  CGO_ENABLED=0 GOOS=linux

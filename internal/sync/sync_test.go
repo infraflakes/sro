@@ -3,42 +3,45 @@ package sync
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/infraflakes/sro/internal/config"
 )
 
 func makeRepo(t *testing.T, dir string) {
-	repo, err := git.PlainInit(dir, false)
-	if err != nil {
+	t.Helper()
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v failed: %v\n%s", args, err, out)
+		}
+	}
+	run("init")
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("# test"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(dir, "README.md")
-	if err := os.WriteFile(file, []byte("# test"), 0o644); err != nil {
+	run("add", "README.md")
+	run("commit", "-m", "initial commit")
+	run("branch", "-M", "main")
+	// Create a feature branch
+	run("checkout", "-b", "feature")
+	if err := os.WriteFile(filepath.Join(dir, "FEATURE.md"), []byte("# feature"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	w, err := repo.Worktree()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.Add("README.md"); err != nil {
-		t.Fatal(err)
-	}
-	_, err = w.Commit("initial commit", &git.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Test",
-			Email: "test@test.com",
-			When:  time.Now(),
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	run("add", "FEATURE.md")
+	run("commit", "-m", "feature commit")
+	// Go back to main
+	run("checkout", "main")
 }
 
 func TestRun_CloneNewRepo(t *testing.T) {
@@ -66,8 +69,9 @@ func TestRun_CloneNewRepo(t *testing.T) {
 	if _, err := os.Stat(clonedPath); err != nil {
 		t.Fatalf("cloned dir does not exist: %v", err)
 	}
-	if _, err := git.PlainOpen(clonedPath); err != nil {
-		t.Fatalf("cannot open cloned repo: %v", err)
+	cmd := exec.Command("git", "-C", clonedPath, "status")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("cannot verify cloned repo: %v", err)
 	}
 }
 
@@ -80,7 +84,8 @@ func TestRun_SkipExistingRepo(t *testing.T) {
 	if err := os.MkdirAll(clonedPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := git.PlainInit(clonedPath, false); err != nil {
+	cmd := exec.Command("git", "init", clonedPath)
+	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +159,8 @@ func TestRun_WarnUnknownRepo(t *testing.T) {
 	if err := os.MkdirAll(unknownDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := git.PlainInit(unknownDir, false); err != nil {
+	cmd := exec.Command("git", "init", unknownDir)
+	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -173,7 +179,8 @@ func TestWarnUnknownReposOutput(t *testing.T) {
 	if err := os.MkdirAll(unknownDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := git.PlainInit(unknownDir, false); err != nil {
+	cmd := exec.Command("git", "init", unknownDir)
+	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -211,6 +218,49 @@ func TestRun_CloneFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to clone bad") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRun_CloneSpecificBranch(t *testing.T) {
+	sanctuary := t.TempDir()
+	repoDir := t.TempDir()
+	makeRepo(t, repoDir)
+
+	cfg := &config.Config{
+		Sanctuary: sanctuary,
+		Projects: map[string]*config.Project{
+			"test": {
+				Name:   "test",
+				URL:    repoDir,
+				Dir:    "cloned",
+				Sync:   "clone",
+				Branch: "feature",
+			},
+		},
+	}
+
+	if err := Run(cfg); err != nil {
+		t.Fatalf("Run error: %v", err)
+	}
+
+	clonedPath := filepath.Join(sanctuary, "cloned")
+	if _, err := os.Stat(clonedPath); err != nil {
+		t.Fatalf("cloned dir does not exist: %v", err)
+	}
+	// Verify we're on the feature branch
+	cmd := exec.Command("git", "-C", clonedPath, "branch", "--show-current")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git branch failed: %v\n%s", err, out)
+	}
+	branch := strings.TrimSpace(string(out))
+	if branch != "feature" {
+		t.Fatalf("expected branch 'feature', got %s", branch)
+	}
+	// Verify the feature file exists
+	featurePath := filepath.Join(clonedPath, "FEATURE.md")
+	if _, err := os.Stat(featurePath); err != nil {
+		t.Fatalf("feature file does not exist: %v", err)
 	}
 }
 

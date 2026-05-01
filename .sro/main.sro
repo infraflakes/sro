@@ -26,21 +26,21 @@ fn test_sro {
 }
 
 seq start_sro {
-  init_sro(pr.sro);
-  build_sro(pr.sro);
+  init_sro(sro);
+  build_sro(sro);
 }
 
 seq build_sro {
-  build_sro(pr.sro);
+  build_sro(sro);
 }
 
 seq test_sro {
-  check_sro(pr.sro);
-  test_sro(pr.sro);
+  check_sro(sro);
+  test_sro(sro);
 }
 
 par all_sro {
-  build_sro(pr.sro);
-  check_sro(pr.sro);
-  test_sro(pr.sro);
+  build_sro(sro);
+  check_sro(sro);
+  test_sro(sro);
 }
