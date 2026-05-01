@@ -138,7 +138,12 @@ func RunWithContext(ctx context.Context, model *Model) error {
 			}
 			// Minimum space needed: task row + minPanelHeight(3) + spacing(1) + possible pruned indicator(1) = 6
 			const minTaskSpace = 6
-			for yBefore+minTaskSpace > visibleHeight && model.ScrollOffset < model.Selected {
+			requiredSpace := minTaskSpace
+			if selectedHeight > 0 && selectedHeight < requiredSpace {
+				requiredSpace = selectedHeight
+			}
+			for yBefore+requiredSpace > visibleHeight && model.ScrollOffset < model.Selected {
+
 				yBefore -= taskHeights[model.ScrollOffset]
 				model.ScrollOffset++
 			}

@@ -32,6 +32,7 @@ func makeRepo(t *testing.T, dir string) {
 	}
 	run("add", "README.md")
 	run("commit", "-m", "initial commit")
+	run("branch", "-M", "main")
 	// Create a feature branch
 	run("checkout", "-b", "feature")
 	if err := os.WriteFile(filepath.Join(dir, "FEATURE.md"), []byte("# feature"), 0o644); err != nil {
@@ -40,7 +41,7 @@ func makeRepo(t *testing.T, dir string) {
 	run("add", "FEATURE.md")
 	run("commit", "-m", "feature commit")
 	// Go back to main
-	run("checkout", "-b", "main")
+	run("checkout", "main")
 }
 
 func TestRun_CloneNewRepo(t *testing.T) {
