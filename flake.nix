@@ -29,7 +29,6 @@
           else if (self ? shortRev)
           then self.shortRev
           else "dev";
-
         go = pkgs.go_1_26;
         buildGoModule = pkgs.buildGoModule.override {inherit go;};
       in {
@@ -65,7 +64,6 @@
             pkgs.cmake
             pkgs.goreleaser
           ];
-
           shellHook = ''
             export GOPATH="$TMPDIR/.go"
             export PATH="$GOPATH/bin:$PATH"
