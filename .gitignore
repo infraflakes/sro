@@ -1,9 +1,4 @@
-.go
 .direnv
 bin/
 result
-
-
-# Added by cargo
-
 /target

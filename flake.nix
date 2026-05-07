@@ -22,8 +22,13 @@
         pkgs,
         system,
         ...
-      }: {
-        packages.default = pkgs.rustPlatform.buildRustPackage {
+      }: let
+        muslPkgs =
+          if system == "x86_64-linux"
+          then pkgs.pkgsCross.musl64
+          else pkgs.pkgsCross.aarch64-multiplatform-musl;
+      in {
+        packages.default = muslPkgs.rustPlatform.buildRustPackage {
           pname = "sro";
           version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
 
