@@ -13,7 +13,7 @@
     ...
   }:
     flake-parts.lib.mkFlake {inherit inputs;} {
-      systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
+      systems = ["x86_64-linux" "aarch64-linux"];
 
       perSystem = {
         config,
@@ -22,32 +22,23 @@
         pkgs,
         system,
         ...
-      }: let
-        version =
-          if (self ? dirtyShortRev)
-          then "${self.dirtyShortRev}-dirty"
-          else if (self ? shortRev)
-          then self.shortRev
-          else "dev";
-        go = pkgs.go_1_26;
-        buildGoModule = pkgs.buildGoModule.override {inherit go;};
-      in {
-        packages.default = buildGoModule {
+      }: {
+        packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "sro";
-          inherit version;
-          src = ./.;
+          version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
 
-          vendorHash = "sha256-FmrCSNInn0fmtN2pwQ5gmFcXAGTWZ0t7KxEkiXqSTJI=";
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter = path: type: let
+              baseName = builtins.baseNameOf path;
+            in
+              ! (builtins.elem baseName ["target" ".git" ".direnv"]);
+          };
 
-          env.CGO_ENABLED = "0";
-
-          ldflags = [
-            "-s"
-            "-w"
-            "-X github.com/infraflakes/sro/cmd.version=${version}"
-          ];
-
-          nativeBuildInputs = [pkgs.installShellFiles pkgs.git];
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            allowBuiltinFetchGit = true;
+          };
 
           postInstall = ''
             installShellCompletion --cmd sro \
@@ -58,16 +49,13 @@
         };
 
         devShells.default = pkgs.mkShell {
-          packages = [
-            go
-            pkgs.golangci-lint
-            pkgs.cmake
-            pkgs.goreleaser
+          inputsFrom = [config.packages.default];
+          buildInputs = with pkgs; [
+            cargo
+            clippy
+            rustfmt
+            cargo-edit
           ];
-          shellHook = ''
-            export GOPATH="$TMPDIR/.go"
-            export PATH="$GOPATH/bin:$PATH"
-          '';
         };
       };
     };

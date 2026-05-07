@@ -1,0 +1,13 @@
+[package]
+name = "sro"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+authors = ["Nguyen Bao Truong <infraflakes@proton.me>"]
+
+[dependencies]
+clap = "4.6.1"
+miette = "7.6.0"
+ratatui = "0.30.0"
+thiserror = "2.0.18"
+tokio = "1.52.2"
