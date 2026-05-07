@@ -1,156 +1,29 @@
-use crate::ast::{FnStmt, SeqStmt, ParStmt, Expr};
-use crate::config::{Config, Project, ConfigError};
+use crate::config::{Config, ConfigError, Project};
+use crate::dsl::ast::{Expr, FnStmt};
 use std::collections::HashMap;
-use std::io::{self, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command;
 
 pub type OutputCallback = Box<dyn Fn(String) + Send>;
 
-pub struct Runner {
-    cfg: Config,
-    writer: Box<dyn Write>,
-    suppress_headers: bool,
-    output_callback: Option<OutputCallback>,
-}
-
-impl Runner {
-    pub fn new(cfg: Config) -> Self {
-        Runner {
-            cfg,
-            writer: Box::new(io::stdout()),
-            suppress_headers: false,
-            output_callback: None,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn with_writer(mut self, writer: Box<dyn Write>) -> Self {
-        self.writer = writer;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn suppress_headers(mut self, suppress: bool) -> Self {
-        self.suppress_headers = suppress;
-        self
-    }
-
-    pub fn with_output_callback(mut self, callback: OutputCallback) -> Self {
-        self.output_callback = Some(callback);
-        self.writer = Box::new(io::sink()); // Suppress stdout when callback is set
-        self
-    }
-
-    pub fn execute_fn_call(&mut self, fn_name: &str, project_name: &str) -> Result<(), ConfigError> {
-        let fn_decl = self.cfg.functions.get(fn_name)
-            .ok_or_else(|| ConfigError::Validation(format!("unknown function: {}", fn_name)))?
-            .clone();
-        
-        let project = self.cfg.projects.get(project_name)
-            .ok_or_else(|| ConfigError::Validation(format!("unknown project: {}", project_name)))?
-            .clone();
-
-        if !self.suppress_headers {
-            let line = format!("{}({})", fn_name, project_name);
-            if let Some(ref callback) = self.output_callback {
-                callback(line);
-            } else {
-                writeln!(self.writer, "\x1b[38;2;91;156;246m{}\x1b[0m", line)
-                    .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-            }
-        }
-
-        let mut ctx = ExecContext::new(&self.cfg, &project, &mut *self.writer, self.output_callback.as_ref());
-        if let crate::ast::Stmt::FnDecl { body, .. } = &fn_decl {
-            ctx.exec_fn_body(body)?;
-        }
-        Ok(())
-    }
-
-    pub fn run_seq(&mut self, seq_name: &str) -> Result<(), ConfigError> {
-        let seq_decl = self.cfg.seqs.get(seq_name)
-            .ok_or_else(|| ConfigError::Validation(format!("unknown seq: {}", seq_name)))?
-            .clone();
-
-        if !self.suppress_headers {
-            let line = format!("seq {}", seq_name);
-            if let Some(ref callback) = self.output_callback {
-                callback(line);
-            } else {
-                writeln!(self.writer, "{}", line)
-                    .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-            }
-        }
-
-        self.execute_seq(&seq_decl)
-    }
-
-    fn execute_seq(&mut self, seq_decl: &crate::ast::Stmt) -> Result<(), ConfigError> {
-        if let crate::ast::Stmt::SeqDecl { stmts, .. } = seq_decl {
-            for stmt in stmts {
-                match stmt {
-                    SeqStmt::FnCall { fn_name, project_name, .. } => {
-                        self.execute_fn_call(fn_name, project_name)?;
-                    }
-                    SeqStmt::SeqRef { seq_name, .. } => {
-                        let ref_seq = self.cfg.seqs.get(seq_name)
-                            .ok_or_else(|| ConfigError::Validation(format!("unknown seq: {}", seq_name)))?
-                            .clone();
-                        self.execute_seq(&ref_seq)?;
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub fn run_par(&mut self, par_name: &str) -> Result<(), ConfigError> {
-        let par_decl = self.cfg.pars.get(par_name)
-            .ok_or_else(|| ConfigError::Validation(format!("unknown par: {}", par_name)))?
-            .clone();
-
-        if !self.suppress_headers {
-            writeln!(self.writer, "par {}", par_name)
-                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-        }
-
-        self.execute_par(&par_decl)
-    }
-
-    fn execute_par(&mut self, par_decl: &crate::ast::Stmt) -> Result<(), ConfigError> {
-        // For now, execute sequentially - will need async for true parallel execution
-        if let crate::ast::Stmt::ParDecl { stmts, .. } = par_decl {
-            for stmt in stmts {
-                match stmt {
-                    ParStmt::FnCall { fn_name, project_name, .. } => {
-                        self.execute_fn_call(fn_name, project_name)?;
-                    }
-                    ParStmt::SeqRef { seq_name, .. } => {
-                        let ref_seq = self.cfg.seqs.get(seq_name)
-                            .ok_or_else(|| ConfigError::Validation(format!("unknown seq: {}", seq_name)))?
-                            .clone();
-                        self.execute_seq(&ref_seq)?;
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-struct ExecContext<'a> {
-    cfg: &'a Config,
-    project: &'a Project,
-    writer: &'a mut dyn Write,
-    output_callback: Option<&'a OutputCallback>,
-    vars: HashMap<String, String>,
-    env_stack: Vec<HashMap<String, String>>,
-    work_dir: PathBuf,
+pub struct ExecContext<'a> {
+    pub(super) cfg: &'a Config,
+    pub(super) project: &'a Project,
+    pub(super) writer: &'a mut dyn Write,
+    pub(super) output_callback: Option<&'a OutputCallback>,
+    pub(super) vars: HashMap<String, String>,
+    pub(super) env_stack: Vec<HashMap<String, String>>,
+    pub(super) work_dir: PathBuf,
 }
 
 impl<'a> ExecContext<'a> {
-    fn new(cfg: &'a Config, project: &'a Project, writer: &'a mut dyn Write, output_callback: Option<&'a OutputCallback>) -> Self {
+    pub(super) fn new(
+        cfg: &'a Config,
+        project: &'a Project,
+        writer: &'a mut dyn Write,
+        output_callback: Option<&'a OutputCallback>,
+    ) -> Self {
         ExecContext {
             cfg,
             project,
@@ -162,14 +35,23 @@ impl<'a> ExecContext<'a> {
         }
     }
 
-    fn exec_fn_body(&mut self, body: &[FnStmt]) -> Result<(), ConfigError> {
+    pub(super) fn exec_fn_body(&mut self, body: &[FnStmt]) -> Result<(), ConfigError> {
         for stmt in body {
             match stmt {
                 FnStmt::Log { value, .. } => self.exec_log(value)?,
                 FnStmt::Exec { value, .. } => self.exec_exec(value)?,
                 FnStmt::Cd { arg, .. } => self.exec_cd(arg)?,
-                FnStmt::VarDecl { name, value, var_type, .. } => self.exec_var_decl(name, value, var_type)?,
-                FnStmt::EnvBlock { pairs, body: block_body, .. } => self.exec_env_block(pairs, block_body)?,
+                FnStmt::VarDecl {
+                    name,
+                    value,
+                    var_type,
+                    ..
+                } => self.exec_var_decl(name, value, var_type)?,
+                FnStmt::EnvBlock {
+                    pairs,
+                    body: block_body,
+                    ..
+                } => self.exec_env_block(pairs, block_body)?,
             }
         }
         Ok(())
@@ -192,7 +74,7 @@ impl<'a> ExecContext<'a> {
         let cmd_str = self.resolve_expr(value)?;
         let indent = "  ".repeat(self.env_stack.len());
         let line = format!("{}exec {}", indent, cmd_str);
-        
+
         if let Some(ref callback) = self.output_callback {
             callback(line);
         } else {
@@ -217,7 +99,7 @@ impl<'a> ExecContext<'a> {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        
+
         if !stdout.is_empty() {
             let stdout_indent = "  ".repeat(self.env_stack.len() + 1);
             for line in stdout.lines() {
@@ -230,7 +112,7 @@ impl<'a> ExecContext<'a> {
                 }
             }
         }
-        
+
         if !stderr.is_empty() {
             let stderr_indent = "  ".repeat(self.env_stack.len() + 1);
             for line in stderr.lines() {
@@ -256,7 +138,10 @@ impl<'a> ExecContext<'a> {
         };
 
         if !self.work_dir.exists() {
-            return Err(ConfigError::Validation(format!("cd {}: directory does not exist", arg)));
+            return Err(ConfigError::Validation(format!(
+                "cd {}: directory does not exist",
+                arg
+            )));
         }
 
         let indent = "  ".repeat(self.env_stack.len());
@@ -270,23 +155,38 @@ impl<'a> ExecContext<'a> {
         Ok(())
     }
 
-    fn exec_var_decl(&mut self, name: &str, value: &Expr, var_type: &crate::ast::VarType) -> Result<(), ConfigError> {
+    fn exec_var_decl(
+        &mut self,
+        name: &str,
+        value: &Expr,
+        var_type: &crate::dsl::ast::VarType,
+    ) -> Result<(), ConfigError> {
         let val = self.resolve_expr(value)?;
-        
-        if var_type == &crate::ast::VarType::Shell {
+
+        if var_type == &crate::dsl::ast::VarType::Shell {
             let output = Command::new(&self.cfg.shell)
                 .arg("-c")
                 .arg(&val)
                 .current_dir(&self.work_dir)
                 .envs(self.build_env())
                 .output()
-                .map_err(|e| ConfigError::Validation(format!("shell execution failed for var {}: {}", name, e)))?;
+                .map_err(|e| {
+                    ConfigError::Validation(format!(
+                        "shell execution failed for var {}: {}",
+                        name, e
+                    ))
+                })?;
 
             if !output.status.success() {
-                return Err(ConfigError::Validation(format!("shell execution failed for var {}", name)));
+                return Err(ConfigError::Validation(format!(
+                    "shell execution failed for var {}",
+                    name
+                )));
             }
 
-            let result = String::from_utf8_lossy(&output.stdout).trim_end().to_string();
+            let result = String::from_utf8_lossy(&output.stdout)
+                .trim_end()
+                .to_string();
             self.vars.insert(name.to_string(), result);
         } else {
             self.vars.insert(name.to_string(), val);
@@ -294,7 +194,11 @@ impl<'a> ExecContext<'a> {
         Ok(())
     }
 
-    fn exec_env_block(&mut self, pairs: &[crate::ast::EnvPair], body: &[FnStmt]) -> Result<(), ConfigError> {
+    fn exec_env_block(
+        &mut self,
+        pairs: &[crate::dsl::ast::EnvPair],
+        body: &[FnStmt],
+    ) -> Result<(), ConfigError> {
         let mut layer = HashMap::new();
         for pair in pairs {
             let val = self.resolve_expr(&pair.value)?;
@@ -304,7 +208,7 @@ impl<'a> ExecContext<'a> {
         let keys: Vec<&str> = pairs.iter().map(|p| p.key.as_str()).collect();
         let indent = "  ".repeat(self.env_stack.len());
         let line = format!("{}env  {}", indent, keys.join(", "));
-        
+
         if let Some(ref callback) = self.output_callback {
             callback(line);
         } else {
@@ -333,7 +237,10 @@ impl<'a> ExecContext<'a> {
                         if let Some(value) = self.vars.get(var_name) {
                             result.push_str(value);
                         } else {
-                            return Err(ConfigError::Validation(format!("undefined variable: ${}", var_name)));
+                            return Err(ConfigError::Validation(format!(
+                                "undefined variable: ${}",
+                                var_name
+                            )));
                         }
                     } else {
                         result.push_str(&part.value);
@@ -345,7 +252,10 @@ impl<'a> ExecContext<'a> {
                 if let Some(value) = self.vars.get(name) {
                     Ok(value.clone())
                 } else {
-                    Err(ConfigError::Validation(format!("undefined variable: ${}", name)))
+                    Err(ConfigError::Validation(format!(
+                        "undefined variable: ${}",
+                        name
+                    )))
                 }
             }
         }
@@ -353,13 +263,11 @@ impl<'a> ExecContext<'a> {
 
     fn build_env(&self) -> Vec<(String, String)> {
         let mut env: HashMap<String, String> = HashMap::new();
-        
-        // Copy current environment
+
         for (key, value) in std::env::vars() {
             env.insert(key, value);
         }
 
-        // Apply env stack layers
         for layer in &self.env_stack {
             for (key, value) in layer {
                 env.insert(key.clone(), value.clone());

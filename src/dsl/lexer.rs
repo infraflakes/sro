@@ -1,4 +1,4 @@
-use crate::token::{Token, TokenType, lookup_ident};
+use crate::dsl::token::{Token, TokenType, lookup_ident};
 
 #[derive(Debug)]
 pub struct Lexer {
@@ -32,7 +32,7 @@ impl Lexer {
         };
         self.pos = self.read_pos;
         self.read_pos += 1;
-        
+
         if self.ch == Some('\n') {
             self.line += 1;
             self.col = 0;
@@ -68,7 +68,7 @@ impl Lexer {
         let start_line = self.line;
         let start_col = self.col;
         let start_pos = self.pos;
-        
+
         while let Some(c) = self.ch {
             if c.is_alphanumeric() || c == '_' {
                 self.read_char();
@@ -76,7 +76,7 @@ impl Lexer {
                 break;
             }
         }
-        
+
         let ident: String = self.input[start_pos..self.pos].iter().collect();
         let ty = lookup_ident(&ident);
         Token::new(ty, start_line, start_col)
@@ -86,7 +86,7 @@ impl Lexer {
         let start_line = self.line;
         let start_col = self.col;
         let start_pos = self.pos;
-        
+
         self.read_char(); // skip opening backtick
         while let Some(c) = self.ch {
             if c == '`' {
@@ -94,10 +94,10 @@ impl Lexer {
             }
             self.read_char();
         }
-        
+
         let content: String = self.input[start_pos + 1..self.pos].iter().collect();
         self.read_char(); // skip closing backtick
-        
+
         Token::new(TokenType::Backtick(content), start_line, start_col)
     }
 
@@ -105,10 +105,10 @@ impl Lexer {
         let start_line = self.line;
         let start_col = self.col;
         let start_pos = self.pos;
-        
+
         self.read_char(); // skip '.'
         self.read_char(); // skip '/'
-        
+
         while let Some(c) = self.ch {
             if !c.is_whitespace() && c != ',' && c != ']' && c != ';' {
                 self.read_char();
@@ -116,7 +116,7 @@ impl Lexer {
                 break;
             }
         }
-        
+
         let path: String = self.input[start_pos..self.pos].iter().collect();
         Token::new(TokenType::PathLit(path), start_line, start_col)
     }
@@ -186,13 +186,21 @@ impl Lexer {
             }
             Some(':') => {
                 self.read_char();
-                Token::new(TokenType::Illegal("unexpected character: :".to_string()), start_line, start_col)
+                Token::new(
+                    TokenType::Illegal("unexpected character: :".to_string()),
+                    start_line,
+                    start_col,
+                )
             }
             Some('`') => self.read_backtick(),
             Some(c) if c.is_alphabetic() || c == '_' => self.read_ident(),
             Some(c) => {
                 self.read_char();
-                Token::new(TokenType::Illegal(format!("unexpected character: {}", c)), start_line, start_col)
+                Token::new(
+                    TokenType::Illegal(format!("unexpected character: {}", c)),
+                    start_line,
+                    start_col,
+                )
             }
         }
     }
@@ -206,10 +214,13 @@ mod tests {
     fn test_basic_tokens() {
         let input = "shell = `bash`;";
         let mut lexer = Lexer::new(input.to_string());
-        
+
         assert_eq!(lexer.next_token().ty, TokenType::Shell);
         assert_eq!(lexer.next_token().ty, TokenType::Assign);
-        assert_eq!(lexer.next_token().ty, TokenType::Backtick("bash".to_string()));
+        assert_eq!(
+            lexer.next_token().ty,
+            TokenType::Backtick("bash".to_string())
+        );
         assert_eq!(lexer.next_token().ty, TokenType::Semicolon);
         assert_eq!(lexer.next_token().ty, TokenType::EOF);
     }
@@ -218,7 +229,7 @@ mod tests {
     fn test_keywords() {
         let input = "sanctuary import var string pr fn seq par env log exec cd shell";
         let mut lexer = Lexer::new(input.to_string());
-        
+
         assert_eq!(lexer.next_token().ty, TokenType::Sanctuary);
         assert_eq!(lexer.next_token().ty, TokenType::Import);
         assert_eq!(lexer.next_token().ty, TokenType::Var);
@@ -238,7 +249,7 @@ mod tests {
     fn test_comments() {
         let input = "# comment\nshell = `bash`;";
         let mut lexer = Lexer::new(input.to_string());
-        
+
         assert_eq!(lexer.next_token().ty, TokenType::Shell);
     }
 
@@ -246,7 +257,10 @@ mod tests {
     fn test_path_literal() {
         let input = "./path/to/file.sro";
         let mut lexer = Lexer::new(input.to_string());
-        
-        assert_eq!(lexer.next_token().ty, TokenType::PathLit("./path/to/file.sro".to_string()));
+
+        assert_eq!(
+            lexer.next_token().ty,
+            TokenType::PathLit("./path/to/file.sro".to_string())
+        );
     }
 }

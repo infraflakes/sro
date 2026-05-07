@@ -1,20 +1,20 @@
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+};
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     layout::Rect,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
-    Frame, Terminal,
 };
+use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
-use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
-use std::io;
 
 const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const HEADER_HEIGHT: usize = 3;
@@ -87,12 +87,14 @@ impl Model {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_scroll_position(&self, terminal_height: u16) -> usize {
-        let max_y = terminal_height.saturating_sub(HEADER_HEIGHT as u16 + FOOTER_HEIGHT as u16) as usize;
+        let max_y =
+            terminal_height.saturating_sub(HEADER_HEIGHT as u16 + FOOTER_HEIGHT as u16) as usize;
         let mut y = 0; // Start after header
         let mut visible_count = 0;
-        
-        for (_i, task) in self.tasks.iter().enumerate() {
+
+        for task in self.tasks.iter() {
             if y >= self.scroll_row {
                 y += task.rendered_height();
                 visible_count += 1;
@@ -116,10 +118,11 @@ impl Model {
     }
 
     pub fn scroll_to_visible(&mut self, terminal_height: u16) {
-        let max_y = terminal_height.saturating_sub(HEADER_HEIGHT as u16 + FOOTER_HEIGHT as u16) as usize;
+        let max_y =
+            terminal_height.saturating_sub(HEADER_HEIGHT as u16 + FOOTER_HEIGHT as u16) as usize;
         let task_y = self.task_y_position(self.selected);
         let task_height = self.tasks[self.selected].rendered_height();
-        
+
         // If task is above visible area, scroll up
         if task_y < self.scroll_row {
             self.scroll_row = task_y;
@@ -138,9 +141,11 @@ pub struct TuiApp {
 
 #[derive(Debug, Clone)]
 pub enum TuiEvent {
+    #[allow(dead_code)]
     AddTask(String),
     UpdateStatus(usize, TaskStatus),
     AppendOutput(usize, String),
+    #[allow(dead_code)]
     Quit,
 }
 
@@ -155,6 +160,7 @@ impl TuiApp {
         self.tx.clone()
     }
 
+    #[allow(dead_code)]
     pub fn get_model(&self) -> Arc<Mutex<Model>> {
         self.model.clone()
     }
@@ -192,52 +198,53 @@ impl TuiApp {
 
             // Handle keyboard events
             if event::poll(Duration::from_millis(50))?
-                && let Event::Key(key) = event::read()? {
-                    match key.code {
-                        KeyCode::Char('q') => break,
-                        KeyCode::Down => {
-                            let mut model = self.model.lock().unwrap();
-                            if model.selected < model.tasks.len().saturating_sub(1) {
-                                model.selected += 1;
-                                let size = terminal.size()?;
-                                model.scroll_to_visible(size.height);
-                            }
+                && let Event::Key(key) = event::read()?
+            {
+                match key.code {
+                    KeyCode::Char('q') => break,
+                    KeyCode::Down => {
+                        let mut model = self.model.lock().unwrap();
+                        if model.selected < model.tasks.len().saturating_sub(1) {
+                            model.selected += 1;
+                            let size = terminal.size()?;
+                            model.scroll_to_visible(size.height);
                         }
-                        KeyCode::Up => {
-                            let mut model = self.model.lock().unwrap();
-                            if model.selected > 0 {
-                                model.selected -= 1;
-                                let size = terminal.size()?;
-                                model.scroll_to_visible(size.height);
-                            }
-                        }
-                        KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right => {
-                            let selected = {
-                                let model = self.model.lock().unwrap();
-                                model.selected
-                            };
-                            let mut model = self.model.lock().unwrap();
-                            if let Some(task) = model.tasks.get_mut(selected) {
-                                task.expanded = !task.expanded;
-                                let size = terminal.size()?;
-                                model.scroll_to_visible(size.height);
-                            }
-                        }
-                        KeyCode::Left => {
-                            let selected = {
-                                let model = self.model.lock().unwrap();
-                                model.selected
-                            };
-                            let mut model = self.model.lock().unwrap();
-                            if let Some(task) = model.tasks.get_mut(selected) {
-                                if task.expanded {
-                                    task.expanded = false;
-                                }
-                            }
-                        }
-                        _ => {}
                     }
+                    KeyCode::Up => {
+                        let mut model = self.model.lock().unwrap();
+                        if model.selected > 0 {
+                            model.selected -= 1;
+                            let size = terminal.size()?;
+                            model.scroll_to_visible(size.height);
+                        }
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right => {
+                        let selected = {
+                            let model = self.model.lock().unwrap();
+                            model.selected
+                        };
+                        let mut model = self.model.lock().unwrap();
+                        if let Some(task) = model.tasks.get_mut(selected) {
+                            task.expanded = !task.expanded;
+                            let size = terminal.size()?;
+                            model.scroll_to_visible(size.height);
+                        }
+                    }
+                    KeyCode::Left => {
+                        let selected = {
+                            let model = self.model.lock().unwrap();
+                            model.selected
+                        };
+                        let mut model = self.model.lock().unwrap();
+                        if let Some(task) = model.tasks.get_mut(selected)
+                            && task.expanded
+                        {
+                            task.expanded = false;
+                        }
+                    }
+                    _ => {}
                 }
+            }
 
             // Render
             spinner_idx = (spinner_idx + 1) % SPINNER_FRAMES.len();
@@ -287,13 +294,15 @@ fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
     f.render_widget(header, Rect::new(0, 0, size.width, 1));
 
     // Separator
-    let separator = Paragraph::new("─".repeat(size.width as usize))
-        .style(Style::default().fg(Color::DarkGray));
+    let separator =
+        Paragraph::new("─".repeat(size.width as usize)).style(Style::default().fg(Color::DarkGray));
     f.render_widget(separator, Rect::new(0, 1, size.width, 1));
 
     // Task rows with accordion expansion
     let mut y = 0;
-    let max_y = size.height.saturating_sub(HEADER_HEIGHT as u16 + FOOTER_HEIGHT as u16) as usize;
+    let max_y = size
+        .height
+        .saturating_sub(HEADER_HEIGHT as u16 + FOOTER_HEIGHT as u16) as usize;
 
     for (i, task) in model.tasks.iter().enumerate() {
         let task_row = y;
@@ -334,25 +343,34 @@ fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
                 ""
             };
 
-            let task_line = format!("{} {} {} {}",
+            let task_line = format!(
+                "{} {} {} {}",
                 if is_selected { "▸" } else { " " },
                 spinner,
                 task.name,
                 arrow
             );
 
-            let task_paragraph = Paragraph::new(task_line)
-                .style(style);
-            f.render_widget(task_paragraph, Rect::new(0, (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16, size.width, 1));
+            let task_paragraph = Paragraph::new(task_line).style(style);
+            f.render_widget(
+                task_paragraph,
+                Rect::new(
+                    0,
+                    (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16,
+                    size.width,
+                    1,
+                ),
+            );
             y += 1;
 
             // Expanded output panel - fixed height to keep layout static
             if task.expanded {
                 const PANEL_HEIGHT: usize = 10;
                 let panel_height = PANEL_HEIGHT.min(max_y - (y - model.scroll_row));
-                
+
                 if panel_height > 0 && !task.output.is_empty() {
-                    let output_lines: Vec<String> = task.output
+                    let output_lines: Vec<String> = task
+                        .output
                         .iter()
                         .rev()
                         .take(panel_height)
@@ -367,8 +385,20 @@ fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
 
                     let output_paragraph = Paragraph::new(output_text)
                         .style(Style::default().fg(Color::Gray))
-                        .block(Block::default().borders(Borders::LEFT).border_style(Style::default().fg(Color::DarkGray)));
-                    f.render_widget(output_paragraph, Rect::new(2, (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16, size.width - 4, panel_height as u16));
+                        .block(
+                            Block::default()
+                                .borders(Borders::LEFT)
+                                .border_style(Style::default().fg(Color::DarkGray)),
+                        );
+                    f.render_widget(
+                        output_paragraph,
+                        Rect::new(
+                            2,
+                            (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16,
+                            size.width - 4,
+                            panel_height as u16,
+                        ),
+                    );
                     y += panel_height;
                 }
                 y += 1; // spacing after panel
@@ -396,23 +426,35 @@ fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
     let mut footer_spans = Vec::new();
 
     if ok_count > 0 {
-        footer_spans.push(Span::styled(format!("✓ {} ok ", ok_count), Style::default().fg(Color::Green)));
+        footer_spans.push(Span::styled(
+            format!("✓ {} ok ", ok_count),
+            Style::default().fg(Color::Green),
+        ));
     }
     if running_count > 0 {
-        footer_spans.push(Span::styled(format!("{} {} running ", SPINNER_FRAMES[spinner_idx], running_count), Style::default().fg(Color::Yellow)));
+        footer_spans.push(Span::styled(
+            format!("{} {} running ", SPINNER_FRAMES[spinner_idx], running_count),
+            Style::default().fg(Color::Yellow),
+        ));
     }
     if pending_count > 0 {
-        footer_spans.push(Span::styled(format!("· {} pending ", pending_count), Style::default().fg(Color::DarkGray)));
+        footer_spans.push(Span::styled(
+            format!("· {} pending ", pending_count),
+            Style::default().fg(Color::DarkGray),
+        ));
     }
     if error_count > 0 {
-        footer_spans.push(Span::styled(format!("✗ {} error ", error_count), Style::default().fg(Color::Red)));
+        footer_spans.push(Span::styled(
+            format!("✗ {} error ", error_count),
+            Style::default().fg(Color::Red),
+        ));
     }
 
     let footer = Paragraph::new(Line::from(footer_spans));
     f.render_widget(footer, Rect::new(1, size.height - 1, size.width - 2, 1));
 
     // Footer separator
-    let footer_sep = Paragraph::new("─".repeat(size.width as usize))
-        .style(Style::default().fg(Color::DarkGray));
+    let footer_sep =
+        Paragraph::new("─".repeat(size.width as usize)).style(Style::default().fg(Color::DarkGray));
     f.render_widget(footer_sep, Rect::new(0, size.height - 2, size.width, 1));
 }
