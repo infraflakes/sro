@@ -48,7 +48,7 @@ pub struct Project {
     pub branch: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub shell: String,
     pub sanctuary: String,

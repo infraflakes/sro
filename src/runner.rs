@@ -5,10 +5,13 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
+pub type OutputCallback = Box<dyn Fn(String) + Send>;
+
 pub struct Runner {
     cfg: Config,
     writer: Box<dyn Write>,
     suppress_headers: bool,
+    output_callback: Option<OutputCallback>,
 }
 
 impl Runner {
@@ -17,6 +20,7 @@ impl Runner {
             cfg,
             writer: Box::new(io::stdout()),
             suppress_headers: false,
+            output_callback: None,
         }
     }
 
@@ -32,6 +36,12 @@ impl Runner {
         self
     }
 
+    pub fn with_output_callback(mut self, callback: OutputCallback) -> Self {
+        self.output_callback = Some(callback);
+        self.writer = Box::new(io::sink()); // Suppress stdout when callback is set
+        self
+    }
+
     pub fn execute_fn_call(&mut self, fn_name: &str, project_name: &str) -> Result<(), ConfigError> {
         let fn_decl = self.cfg.functions.get(fn_name)
             .ok_or_else(|| ConfigError::Validation(format!("unknown function: {}", fn_name)))?
@@ -42,11 +52,16 @@ impl Runner {
             .clone();
 
         if !self.suppress_headers {
-            writeln!(self.writer, "\x1b[38;2;91;156;246m{}\x1b[0m({})", fn_name, project_name)
-                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+            let line = format!("{}({})", fn_name, project_name);
+            if let Some(ref callback) = self.output_callback {
+                callback(line);
+            } else {
+                writeln!(self.writer, "\x1b[38;2;91;156;246m{}\x1b[0m", line)
+                    .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+            }
         }
 
-        let mut ctx = ExecContext::new(&self.cfg, &project, &mut *self.writer);
+        let mut ctx = ExecContext::new(&self.cfg, &project, &mut *self.writer, self.output_callback.as_ref());
         if let crate::ast::Stmt::FnDecl { body, .. } = &fn_decl {
             ctx.exec_fn_body(body)?;
         }
@@ -59,8 +74,13 @@ impl Runner {
             .clone();
 
         if !self.suppress_headers {
-            writeln!(self.writer, "seq {}", seq_name)
-                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+            let line = format!("seq {}", seq_name);
+            if let Some(ref callback) = self.output_callback {
+                callback(line);
+            } else {
+                writeln!(self.writer, "{}", line)
+                    .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+            }
         }
 
         self.execute_seq(&seq_decl)
@@ -122,28 +142,23 @@ impl Runner {
 struct ExecContext<'a> {
     cfg: &'a Config,
     project: &'a Project,
+    writer: &'a mut dyn Write,
+    output_callback: Option<&'a OutputCallback>,
     vars: HashMap<String, String>,
     env_stack: Vec<HashMap<String, String>>,
     work_dir: PathBuf,
-    writer: &'a mut dyn Write,
 }
 
 impl<'a> ExecContext<'a> {
-    fn new(cfg: &'a Config, project: &'a Project, writer: &'a mut dyn Write) -> Self {
-        let mut vars = HashMap::new();
-        for (k, v) in &cfg.vars {
-            vars.insert(k.clone(), v.clone());
-        }
-
-        let base_dir = PathBuf::from(&cfg.sanctuary).join(&project.dir);
-
+    fn new(cfg: &'a Config, project: &'a Project, writer: &'a mut dyn Write, output_callback: Option<&'a OutputCallback>) -> Self {
         ExecContext {
             cfg,
             project,
-            vars,
-            env_stack: Vec::new(),
-            work_dir: base_dir,
             writer,
+            output_callback,
+            vars: HashMap::new(),
+            env_stack: Vec::new(),
+            work_dir: PathBuf::from(&cfg.sanctuary).join(&project.dir),
         }
     }
 
@@ -163,16 +178,27 @@ impl<'a> ExecContext<'a> {
     fn exec_log(&mut self, value: &Expr) -> Result<(), ConfigError> {
         let msg = self.resolve_expr(value)?;
         let indent = "  ".repeat(self.env_stack.len());
-        writeln!(self.writer, "{}\x1b[38;2;255;203;107mlog  {}\x1b[0m", indent, msg)
-            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        let line = format!("{}log  {}", indent, msg);
+        if let Some(ref callback) = self.output_callback {
+            callback(line);
+        } else {
+            writeln!(self.writer, "\x1b[38;2;255;203;107m{}\x1b[0m", line)
+                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        }
         Ok(())
     }
 
     fn exec_exec(&mut self, value: &Expr) -> Result<(), ConfigError> {
         let cmd_str = self.resolve_expr(value)?;
         let indent = "  ".repeat(self.env_stack.len());
-        writeln!(self.writer, "{}\x1b[38;2;91;156;246mexec {}\x1b[0m", indent, cmd_str)
-            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        let line = format!("{}exec {}", indent, cmd_str);
+        
+        if let Some(ref callback) = self.output_callback {
+            callback(line);
+        } else {
+            writeln!(self.writer, "\x1b[38;2;91;156;246m{}\x1b[0m", line)
+                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        }
 
         let output = Command::new(&self.cfg.shell)
             .arg("-c")
@@ -195,16 +221,26 @@ impl<'a> ExecContext<'a> {
         if !stdout.is_empty() {
             let stdout_indent = "  ".repeat(self.env_stack.len() + 1);
             for line in stdout.lines() {
-                writeln!(self.writer, "{}{}", stdout_indent, line)
-                    .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+                let line = format!("{}{}", stdout_indent, line);
+                if let Some(ref callback) = self.output_callback {
+                    callback(line);
+                } else {
+                    writeln!(self.writer, "{}", line)
+                        .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+                }
             }
         }
         
         if !stderr.is_empty() {
             let stderr_indent = "  ".repeat(self.env_stack.len() + 1);
             for line in stderr.lines() {
-                writeln!(self.writer, "{}{}", stderr_indent, line)
-                    .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+                let line = format!("{}{}", stderr_indent, line);
+                if let Some(ref callback) = self.output_callback {
+                    callback(line);
+                } else {
+                    writeln!(self.writer, "{}", line)
+                        .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+                }
             }
         }
 
@@ -224,8 +260,13 @@ impl<'a> ExecContext<'a> {
         }
 
         let indent = "  ".repeat(self.env_stack.len());
-        writeln!(self.writer, "{}\x1b[38;2;255;203;107mcd   {}\x1b[0m", indent, arg)
-            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        let line = format!("{}cd   {}", indent, arg);
+        if let Some(ref callback) = self.output_callback {
+            callback(line);
+        } else {
+            writeln!(self.writer, "\x1b[38;2;255;203;107m{}\x1b[0m", line)
+                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        }
         Ok(())
     }
 
@@ -262,8 +303,14 @@ impl<'a> ExecContext<'a> {
 
         let keys: Vec<&str> = pairs.iter().map(|p| p.key.as_str()).collect();
         let indent = "  ".repeat(self.env_stack.len());
-        writeln!(self.writer, "{}\x1b[38;2;199;146;234menv  {}\x1b[0m", indent, keys.join(", "))
-            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        let line = format!("{}env  {}", indent, keys.join(", "));
+        
+        if let Some(ref callback) = self.output_callback {
+            callback(line);
+        } else {
+            writeln!(self.writer, "\x1b[38;2;199;146;234m{}\x1b[0m", line)
+                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+        }
 
         self.env_stack.push(layer);
 

@@ -5,7 +5,7 @@ init:
 	cargo check
 
 build:
-	cargo build --release --target x86_64-unknown-linux-musl
+	cargo build --release
 
 test:
 	cargo clippy

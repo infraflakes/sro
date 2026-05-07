@@ -11,16 +11,16 @@ pub fn sync_all(cfg: &Config, writer: &mut dyn Write) -> Result<(), ConfigError>
 
     // Sync each project
     for proj in cfg.projects.values() {
-        sync_project(cfg, proj, writer)?;
+        sync_project_with_writer(cfg, proj, writer)?;
     }
 
     // Warn about unknown repos
-    warn_unknown_repos(cfg, writer)?;
+    warn_unknown_repos_with_writer(cfg, writer)?;
 
     Ok(())
 }
 
-pub fn sync_project(cfg: &Config, proj: &Project, writer: &mut dyn Write) -> Result<(), ConfigError> {
+pub fn sync_project_with_writer(cfg: &Config, proj: &Project, writer: &mut dyn Write) -> Result<(), ConfigError> {
     if proj.sync == "ignore" {
         writeln!(writer, "  skip  {} (sync=ignore)", proj.name)
             .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
@@ -68,7 +68,74 @@ pub fn sync_project(cfg: &Config, proj: &Project, writer: &mut dyn Write) -> Res
     Ok(())
 }
 
-fn warn_unknown_repos(cfg: &Config, writer: &mut dyn Write) -> Result<(), ConfigError> {
+pub fn sync_project(sanctuary: &str, proj: &Project) -> Result<(), ConfigError> {
+    if proj.sync == "ignore" {
+        return Ok(());
+    }
+
+    let target_dir = PathBuf::from(sanctuary).join(&proj.dir);
+    let git_dir = target_dir.join(".git");
+
+    if git_dir.exists() {
+        return Ok(());
+    }
+
+    let target_dir_str = target_dir.to_string_lossy().to_string();
+    let args = if proj.branch.is_empty() {
+        vec!["clone", &proj.url, &target_dir_str]
+    } else {
+        vec!["clone", "-b", &proj.branch, &proj.url, &target_dir_str]
+    };
+
+    let output = Command::new("git")
+        .args(&args)
+        .output()
+        .map_err(|e| ConfigError::Validation(format!("failed to clone {}: git command failed: {}", proj.name, e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(ConfigError::Validation(format!("failed to clone {}: {}", proj.name, stderr)));
+    }
+
+    Ok(())
+}
+
+pub fn warn_unknown_repos(sanctuary: &str, projects: &std::collections::HashMap<String, Project>) -> Result<(), ConfigError> {
+    let mut known_dirs = std::collections::HashSet::new();
+    for proj in projects.values() {
+        known_dirs.insert(&proj.dir);
+    }
+
+    let entries = match fs::read_dir(sanctuary) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+
+    let mut warnings = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| ConfigError::Validation(format!("failed to read sanctuary: {}", e)))?;
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy().to_string();
+        if known_dirs.contains(&name_str) {
+            continue;
+        }
+        let git_dir = PathBuf::from(sanctuary).join(&name_str).join(".git");
+        if git_dir.exists() {
+            warnings.push(format!("{}/{} is a git repo not in your config", sanctuary, name_str));
+        }
+    }
+
+    if !warnings.is_empty() {
+        return Err(ConfigError::Validation(warnings.join("\n")));
+    }
+
+    Ok(())
+}
+
+pub fn warn_unknown_repos_with_writer(cfg: &Config, writer: &mut dyn Write) -> Result<(), ConfigError> {
     let mut known_dirs = std::collections::HashSet::new();
     for proj in cfg.projects.values() {
         known_dirs.insert(&proj.dir);

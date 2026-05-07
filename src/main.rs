@@ -5,6 +5,7 @@ mod lexer;
 mod parser;
 mod runner;
 mod sync;
+mod tui;
 mod token;
 
 fn main() {
