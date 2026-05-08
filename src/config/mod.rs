@@ -56,15 +56,21 @@ fn parse_recursive(
         ))
     })?;
 
-    let lexer = Lexer::new(data);
+    let lexer = Lexer::new(data.clone());
     let mut parser = Parser::new(lexer);
     let program = parser.parse().map_err(|errors| {
-        let error_msgs: Vec<String> = errors.iter().map(|e| format!("{:?}", e)).collect();
-        ConfigError::Parse(format!(
-            "Parse errors in {}:\n{}",
-            abs_path.display(),
-            error_msgs.join("\n")
-        ))
+        let source = data;
+        let source_name = abs_path.display().to_string();
+        let reports: Vec<miette::Report> = errors
+            .into_iter()
+            .map(|error| {
+                miette::Report::new(error).with_source_code(miette::NamedSource::new(
+                    source_name.clone(),
+                    source.clone(),
+                ))
+            })
+            .collect();
+        ConfigError::ParseReports(reports)
     })?;
 
     let mut results = Vec::new();

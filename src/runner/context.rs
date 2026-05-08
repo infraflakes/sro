@@ -82,27 +82,27 @@ impl<'a> ExecContext<'a> {
                 .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
         }
 
-        let output = Command::new(&self.cfg.shell)
+        use std::io::BufRead;
+        use std::process::Stdio;
+
+        let mut child = Command::new(&self.cfg.shell)
             .arg("-c")
             .arg(&cmd_str)
             .current_dir(&self.work_dir)
             .envs(self.build_env())
-            .output()
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
             .map_err(|e| ConfigError::Validation(format!("exec failed: {}: {}", cmd_str, e)))?;
 
-        if !output.status.success() {
-            return Err(ConfigError::Validation(format!(
-                "exec failed with exit code: {}",
-                output.status.code().unwrap_or(-1)
-            )));
-        }
+        let stdout_indent = "  ".repeat(self.env_stack.len() + 1);
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-
-        if !stdout.is_empty() {
-            let stdout_indent = "  ".repeat(self.env_stack.len() + 1);
-            for line in stdout.lines() {
+        // Stream stdout line-by-line
+        if let Some(stdout) = child.stdout.take() {
+            let reader = std::io::BufReader::new(stdout);
+            for line in reader.lines() {
+                let line =
+                    line.map_err(|e| ConfigError::Validation(format!("read error: {}", e)))?;
                 let line = format!("{}{}", stdout_indent, line);
                 if let Some(ref callback) = self.output_callback {
                     callback(line);
@@ -113,10 +113,13 @@ impl<'a> ExecContext<'a> {
             }
         }
 
-        if !stderr.is_empty() {
-            let stderr_indent = "  ".repeat(self.env_stack.len() + 1);
-            for line in stderr.lines() {
-                let line = format!("{}{}", stderr_indent, line);
+        // Stream stderr line-by-line
+        if let Some(stderr) = child.stderr.take() {
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines() {
+                let line =
+                    line.map_err(|e| ConfigError::Validation(format!("read error: {}", e)))?;
+                let line = format!("{}{}", stdout_indent, line);
                 if let Some(ref callback) = self.output_callback {
                     callback(line);
                 } else {
@@ -124,6 +127,17 @@ impl<'a> ExecContext<'a> {
                         .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
                 }
             }
+        }
+
+        let status = child
+            .wait()
+            .map_err(|e| ConfigError::Validation(format!("exec failed: {}: {}", cmd_str, e)))?;
+
+        if !status.success() {
+            return Err(ConfigError::Validation(format!(
+                "exec failed with exit code: {}",
+                status.code().unwrap_or(-1)
+            )));
         }
 
         Ok(())
@@ -227,53 +241,4 @@ impl<'a> ExecContext<'a> {
         result
     }
 
-    fn resolve_expr(&self, expr: &Expr) -> Result<String, ConfigError> {
-        match expr {
-            Expr::BacktickLit { parts, .. } => {
-                let mut result = String::new();
-                for part in parts {
-                    if part.is_var {
-                        let var_name = part.value.trim_start_matches('$');
-                        if let Some(value) = self.vars.get(var_name) {
-                            result.push_str(value);
-                        } else {
-                            return Err(ConfigError::Validation(format!(
-                                "undefined variable: ${}",
-                                var_name
-                            )));
-                        }
-                    } else {
-                        result.push_str(&part.value);
-                    }
-                }
-                Ok(result)
-            }
-            Expr::VarRef { name, .. } => {
-                if let Some(value) = self.vars.get(name) {
-                    Ok(value.clone())
-                } else {
-                    Err(ConfigError::Validation(format!(
-                        "undefined variable: ${}",
-                        name
-                    )))
-                }
-            }
-        }
-    }
-
-    fn build_env(&self) -> Vec<(String, String)> {
-        let mut env: HashMap<String, String> = HashMap::new();
-
-        for (key, value) in std::env::vars() {
-            env.insert(key, value);
-        }
-
-        for layer in &self.env_stack {
-            for (key, value) in layer {
-                env.insert(key.clone(), value.clone());
-            }
-        }
-
-        env.into_iter().collect()
-    }
 }

@@ -1,4 +1,5 @@
 pub mod context;
+pub mod resolver;
 
 use crate::config::{Config, ConfigError};
 use crate::dsl::ast::{ParStmt, SeqStmt, Stmt};

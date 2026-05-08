@@ -1,13 +1,16 @@
-use crate::dsl::token::{Token, TokenType, lookup_ident};
+use crate::dsl::token::{Token, TokenType};
+
+mod reader;
 
 #[derive(Debug)]
 pub struct Lexer {
-    input: Vec<char>,
-    pos: usize,
-    read_pos: usize,
-    ch: Option<char>,
-    line: usize,
-    col: usize,
+    pub(super) input: Vec<char>,
+    pub(super) pos: usize,
+    pub(super) read_pos: usize,
+    pub(super) ch: Option<char>,
+    pub(super) line: usize,
+    pub(super) col: usize,
+    pub(super) byte_offset: usize,
 }
 
 impl Lexer {
@@ -19,106 +22,10 @@ impl Lexer {
             ch: None,
             line: 1,
             col: 0,
+            byte_offset: 0,
         };
         lexer.read_char();
         lexer
-    }
-
-    fn read_char(&mut self) {
-        self.ch = if self.read_pos < self.input.len() {
-            Some(self.input[self.read_pos])
-        } else {
-            None
-        };
-        self.pos = self.read_pos;
-        self.read_pos += 1;
-
-        if self.ch == Some('\n') {
-            self.line += 1;
-            self.col = 0;
-        } else {
-            self.col += 1;
-        }
-    }
-
-    fn peek(&self) -> Option<char> {
-        if self.read_pos < self.input.len() {
-            Some(self.input[self.read_pos])
-        } else {
-            None
-        }
-    }
-
-    fn skip_whitespace(&mut self) {
-        while let Some(c) = self.ch {
-            if !c.is_whitespace() {
-                break;
-            }
-            self.read_char();
-        }
-    }
-
-    fn skip_comment(&mut self) {
-        while self.ch != Some('\n') && self.ch.is_some() {
-            self.read_char();
-        }
-    }
-
-    fn read_ident(&mut self) -> Token {
-        let start_line = self.line;
-        let start_col = self.col;
-        let start_pos = self.pos;
-
-        while let Some(c) = self.ch {
-            if c.is_alphanumeric() || c == '_' {
-                self.read_char();
-            } else {
-                break;
-            }
-        }
-
-        let ident: String = self.input[start_pos..self.pos].iter().collect();
-        let ty = lookup_ident(&ident);
-        Token::new(ty, start_line, start_col)
-    }
-
-    fn read_backtick(&mut self) -> Token {
-        let start_line = self.line;
-        let start_col = self.col;
-        let start_pos = self.pos;
-
-        self.read_char(); // skip opening backtick
-        while let Some(c) = self.ch {
-            if c == '`' {
-                break;
-            }
-            self.read_char();
-        }
-
-        let content: String = self.input[start_pos + 1..self.pos].iter().collect();
-        self.read_char(); // skip closing backtick
-
-        Token::new(TokenType::Backtick(content), start_line, start_col)
-    }
-
-    fn read_path(&mut self) -> Token {
-        let start_line = self.line;
-        let start_col = self.col;
-        let start_pos = self.pos;
-
-        self.read_char(); // skip '.'
-        self.read_char(); // skip '/'
-
-        while let Some(c) = self.ch {
-            if !c.is_whitespace() && c != ',' && c != ']' && c != ';' {
-                self.read_char();
-            } else {
-                break;
-            }
-        }
-
-        let path: String = self.input[start_pos..self.pos].iter().collect();
-        Token::new(TokenType::PathLit(path), start_line, start_col)
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -132,57 +39,124 @@ impl Lexer {
 
         let start_line = self.line;
         let start_col = self.col;
+        let start_byte_offset = self.byte_offset;
         let ch = self.ch;
 
         match ch {
-            None => Token::new(TokenType::EOF, start_line, start_col),
+            None => Token::new(TokenType::EOF, start_line, start_col, start_byte_offset, 0),
             Some('{') => {
                 self.read_char();
-                Token::new(TokenType::LBrace, start_line, start_col)
+                Token::new(
+                    TokenType::LBrace,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some('}') => {
                 self.read_char();
-                Token::new(TokenType::RBrace, start_line, start_col)
+                Token::new(
+                    TokenType::RBrace,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some('[') => {
                 self.read_char();
-                Token::new(TokenType::LBracket, start_line, start_col)
+                Token::new(
+                    TokenType::LBracket,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some(']') => {
                 self.read_char();
-                Token::new(TokenType::RBracket, start_line, start_col)
+                Token::new(
+                    TokenType::RBracket,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some('(') => {
                 self.read_char();
-                Token::new(TokenType::LParen, start_line, start_col)
+                Token::new(
+                    TokenType::LParen,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some(')') => {
                 self.read_char();
-                Token::new(TokenType::RParen, start_line, start_col)
+                Token::new(
+                    TokenType::RParen,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some(',') => {
                 self.read_char();
-                Token::new(TokenType::Comma, start_line, start_col)
+                Token::new(
+                    TokenType::Comma,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some('.') => {
                 if self.peek() == Some('/') {
                     self.read_path()
                 } else {
                     self.read_char();
-                    Token::new(TokenType::Dot, start_line, start_col)
+                    Token::new(
+                        TokenType::Dot,
+                        start_line,
+                        start_col,
+                        start_byte_offset,
+                        self.byte_offset - start_byte_offset,
+                    )
                 }
             }
             Some(';') => {
                 self.read_char();
-                Token::new(TokenType::Semicolon, start_line, start_col)
+                Token::new(
+                    TokenType::Semicolon,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some('$') => {
                 self.read_char();
-                Token::new(TokenType::Dollar, start_line, start_col)
+                Token::new(
+                    TokenType::Dollar,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some('=') => {
                 self.read_char();
-                Token::new(TokenType::Assign, start_line, start_col)
+                Token::new(
+                    TokenType::Assign,
+                    start_line,
+                    start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
+                )
             }
             Some(':') => {
                 self.read_char();
@@ -190,6 +164,8 @@ impl Lexer {
                     TokenType::Illegal("unexpected character: :".to_string()),
                     start_line,
                     start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
                 )
             }
             Some('`') => self.read_backtick(),
@@ -200,6 +176,8 @@ impl Lexer {
                     TokenType::Illegal(format!("unexpected character: {}", c)),
                     start_line,
                     start_col,
+                    start_byte_offset,
+                    self.byte_offset - start_byte_offset,
                 )
             }
         }

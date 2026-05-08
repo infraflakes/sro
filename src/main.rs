@@ -6,5 +6,8 @@ mod sync;
 mod tui;
 
 fn main() {
-    cli::run();
+    if let Err(e) = cli::run() {
+        eprintln!("{:?}", e);
+        std::process::exit(1);
+    }
 }

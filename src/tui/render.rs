@@ -1,0 +1,224 @@
+use super::*;
+use ratatui::{
+    Frame,
+    layout::Rect,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph},
+};
+
+pub fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
+    let size = f.size();
+
+    // Header with badge and info
+    let badge_color = match model.model_type.as_str() {
+        "seq" => Color::Blue,
+        "par" => Color::Magenta,
+        "sync" => Color::Cyan,
+        _ => Color::White,
+    };
+
+    let header_spans = vec![
+        Span::styled(
+            format!(" {} ", model.model_type),
+            Style::default().fg(Color::Black).bg(badge_color),
+        ),
+        Span::styled(
+            format!(" {} ", model.name),
+            Style::default().fg(Color::White),
+        ),
+        Span::styled(
+            format!(" {} tasks ", model.tasks.len()),
+            Style::default().fg(Color::DarkGray),
+        ),
+    ];
+
+    let header = Paragraph::new(Line::from(header_spans));
+    f.render_widget(header, Rect::new(0, 0, size.width, 1));
+
+    // Separator
+    let separator =
+        Paragraph::new("─".repeat(size.width as usize)).style(Style::default().fg(Color::DarkGray));
+    f.render_widget(separator, Rect::new(0, 1, size.width, 1));
+
+    // Task rows with accordion expansion
+    let mut y = 0;
+    let max_y = size
+        .height
+        .saturating_sub(HEADER_HEIGHT as u16 + FOOTER_HEIGHT as u16) as usize;
+
+    for (i, task) in model.tasks.iter().enumerate() {
+        let task_row = y;
+        if task_row >= model.scroll_row {
+            if y - model.scroll_row >= max_y {
+                break;
+            }
+
+            // Task row
+            let spinner = if task.status == TaskStatus::Running {
+                SPINNER_FRAMES[spinner_idx].to_string()
+            } else {
+                match task.status {
+                    TaskStatus::Pending => "·".to_string(),
+                    TaskStatus::Success => "✓".to_string(),
+                    TaskStatus::Error => "✗".to_string(),
+                    TaskStatus::Running => unreachable!(),
+                }
+            };
+
+            let color = match task.status {
+                TaskStatus::Pending => Color::DarkGray,
+                TaskStatus::Running => Color::Yellow,
+                TaskStatus::Success => Color::Green,
+                TaskStatus::Error => Color::Red,
+            };
+
+            let is_selected = i == model.selected;
+            let style = if is_selected {
+                Style::default().fg(color).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(color)
+            };
+
+            let arrow = if task.status != TaskStatus::Pending {
+                if task.expanded { "▼" } else { "▶" }
+            } else {
+                ""
+            };
+
+            let task_line = format!(
+                "{} {} {} {}",
+                if is_selected { "▸" } else { " " },
+                spinner,
+                task.name,
+                arrow
+            );
+
+            let task_paragraph = Paragraph::new(task_line).style(style);
+            f.render_widget(
+                task_paragraph,
+                Rect::new(
+                    0,
+                    (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16,
+                    size.width,
+                    1,
+                ),
+            );
+            y += 1;
+
+            // Expanded output panel - capped at MAX_PANEL_HEIGHT, shows pruned indicator
+            if task.expanded && !task.output.is_empty() {
+                let total_lines = task.output.len();
+                let mut panel_height = total_lines.min(MAX_PANEL_HEIGHT);
+                panel_height = panel_height.min(max_y.saturating_sub(y - model.scroll_row));
+                let pruned_count = total_lines.saturating_sub(panel_height);
+
+                // Pruned indicator
+                if pruned_count > 0 && y - model.scroll_row < max_y {
+                    let pruned_text = format!(" ↑ {} lines hidden ", pruned_count);
+                    let pruned_line =
+                        Paragraph::new(pruned_text).style(Style::default().fg(Color::DarkGray));
+                    f.render_widget(
+                        pruned_line,
+                        Rect::new(
+                            2,
+                            (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16,
+                            size.width - 4,
+                            1,
+                        ),
+                    );
+                    y += 1;
+                    // Reduce content lines by 1 since pruned indicator takes a row
+                    panel_height = panel_height.saturating_sub(1);
+                }
+
+                if panel_height > 0 {
+                    let output_lines: Vec<String> = task
+                        .output
+                        .iter()
+                        .rev()
+                        .take(panel_height)
+                        .cloned()
+                        .collect();
+
+                    let output_text: Vec<Line> = output_lines
+                        .iter()
+                        .rev()
+                        .map(|line| Line::from(line.as_str()))
+                        .collect();
+
+                    let output_paragraph = Paragraph::new(output_text)
+                        .style(Style::default().fg(Color::Gray))
+                        .block(
+                            Block::default()
+                                .borders(Borders::LEFT)
+                                .border_style(Style::default().fg(Color::DarkGray)),
+                        );
+                    f.render_widget(
+                        output_paragraph,
+                        Rect::new(
+                            2,
+                            (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16,
+                            size.width - 4,
+                            panel_height as u16,
+                        ),
+                    );
+                    y += panel_height;
+                }
+                y += 1; // spacing after panel
+            }
+        } else {
+            y += task.rendered_height();
+        }
+    }
+
+    // Footer with counts
+    let mut ok_count = 0;
+    let mut running_count = 0;
+    let mut pending_count = 0;
+    let mut error_count = 0;
+
+    for task in &model.tasks {
+        match task.status {
+            TaskStatus::Success => ok_count += 1,
+            TaskStatus::Running => running_count += 1,
+            TaskStatus::Pending => pending_count += 1,
+            TaskStatus::Error => error_count += 1,
+        }
+    }
+
+    let mut footer_spans = Vec::new();
+
+    if ok_count > 0 {
+        footer_spans.push(Span::styled(
+            format!("✓ {} ok ", ok_count),
+            Style::default().fg(Color::Green),
+        ));
+    }
+    if running_count > 0 {
+        footer_spans.push(Span::styled(
+            format!("{} {} running ", SPINNER_FRAMES[spinner_idx], running_count),
+            Style::default().fg(Color::Yellow),
+        ));
+    }
+    if pending_count > 0 {
+        footer_spans.push(Span::styled(
+            format!("· {} pending ", pending_count),
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    if error_count > 0 {
+        footer_spans.push(Span::styled(
+            format!("✗ {} error ", error_count),
+            Style::default().fg(Color::Red),
+        ));
+    }
+
+    let footer = Paragraph::new(Line::from(footer_spans));
+    f.render_widget(footer, Rect::new(1, size.height - 1, size.width - 2, 1));
+
+    // Footer separator
+    let footer_sep =
+        Paragraph::new("─".repeat(size.width as usize)).style(Style::default().fg(Color::DarkGray));
+    f.render_widget(footer_sep, Rect::new(0, size.height - 2, size.width, 1));
+}

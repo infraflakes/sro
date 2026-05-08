@@ -44,11 +44,19 @@ pub struct Token {
     pub ty: TokenType,
     pub line: usize,
     pub col: usize,
+    pub offset: usize,
+    pub len: usize,
 }
 
 impl Token {
-    pub fn new(ty: TokenType, line: usize, col: usize) -> Self {
-        Self { ty, line, col }
+    pub fn new(ty: TokenType, line: usize, col: usize, offset: usize, len: usize) -> Self {
+        Self {
+            ty,
+            line,
+            col,
+            offset,
+            len,
+        }
     }
 }
 

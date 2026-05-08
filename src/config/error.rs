@@ -1,9 +1,10 @@
+use miette::Report;
 use std::fmt;
 
 #[derive(Debug)]
 pub enum ConfigError {
     Io(std::io::Error),
-    Parse(String),
+    ParseReports(Vec<Report>),
     CircularImport(String),
     Validation(String),
 }
@@ -12,7 +13,12 @@ impl fmt::Display for ConfigError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ConfigError::Io(e) => write!(f, "IO error: {}", e),
-            ConfigError::Parse(s) => write!(f, "Parse error: {}", s),
+            ConfigError::ParseReports(reports) => {
+                for report in reports {
+                    write!(f, "{}", report)?;
+                }
+                Ok(())
+            }
             ConfigError::CircularImport(s) => write!(f, "Circular import detected: {}", s),
             ConfigError::Validation(s) => write!(f, "Validation error: {}", s),
         }

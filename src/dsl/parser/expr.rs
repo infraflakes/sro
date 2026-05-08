@@ -18,7 +18,10 @@ impl Parser {
                     TokenType::Ident(n) => n.clone(),
                     _ => {
                         return Err(ParseError::new(
-                            miette::SourceSpan::new(self.current_token().line.into(), 1),
+                            miette::SourceSpan::new(
+                                self.current_token().offset.into(),
+                                self.current_token().len,
+                            ),
                             "expected identifier after $".to_string(),
                         ));
                     }
@@ -28,7 +31,10 @@ impl Parser {
                 Ok(Expr::VarRef { span, name })
             }
             _ => Err(ParseError::new(
-                miette::SourceSpan::new(self.current_token().line.into(), 1),
+                miette::SourceSpan::new(
+                    self.current_token().offset.into(),
+                    self.current_token().len,
+                ),
                 "expected expression".to_string(),
             )),
         }

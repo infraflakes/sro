@@ -15,9 +15,10 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
     // First pass: collect shell declaration
     for program in &programs {
         for stmt in &program.stmts {
-            if let Stmt::ShellDecl { value, .. } = stmt
-                && shell.is_empty()
-            {
+            if let Stmt::ShellDecl { value, .. } = stmt {
+                if !shell.is_empty() {
+                    return Err(ConfigError::Validation("duplicate shell declaration".to_string()));
+                }
                 shell = value.clone();
             }
         }
@@ -34,6 +35,10 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
             } = stmt
                 && let Expr::BacktickLit { parts, .. } = value
             {
+                if vars.contains_key(name) {
+                    return Err(ConfigError::Validation(format!("duplicate variable: {}", name)));
+                }
+
                 let resolved: String = parts
                     .iter()
                     .filter(|p| !p.is_var)
@@ -64,11 +69,15 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                     // Already handled in first pass
                 }
                 Stmt::SanctuaryDecl { value, .. } => {
-                    if sanctuary_expr.is_none() {
-                        sanctuary_expr = Some(value);
+                    if sanctuary_expr.is_some() {
+                        return Err(ConfigError::Validation("duplicate sanctuary declaration".to_string()));
                     }
+                    sanctuary_expr = Some(value);
                 }
                 Stmt::ProjectDecl { name, fields, .. } => {
+                    if projects.contains_key(&name) {
+                        return Err(ConfigError::Validation(format!("duplicate project: {}", name)));
+                    }
                     let mut project = Project {
                         name: name.clone(),
                         url: String::new(),
@@ -114,12 +123,21 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                     projects.insert(name, project);
                 }
                 Stmt::FnDecl { ref name, .. } => {
+                    if functions.contains_key(name) {
+                        return Err(ConfigError::Validation(format!("duplicate function: {}", name)));
+                    }
                     functions.insert(name.clone(), stmt);
                 }
                 Stmt::SeqDecl { ref name, .. } => {
+                    if seqs.contains_key(name) {
+                        return Err(ConfigError::Validation(format!("duplicate seq: {}", name)));
+                    }
                     seqs.insert(name.clone(), stmt);
                 }
                 Stmt::ParDecl { ref name, .. } => {
+                    if pars.contains_key(name) {
+                        return Err(ConfigError::Validation(format!("duplicate par: {}", name)));
+                    }
                     pars.insert(name.clone(), stmt);
                 }
                 _ => {}

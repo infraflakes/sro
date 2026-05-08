@@ -78,8 +78,13 @@ pub fn sync_project_with_writer(
     Ok(())
 }
 
-pub fn sync_project(sanctuary: &str, proj: &Project) -> Result<(), ConfigError> {
+pub fn sync_project_with_callback(
+    sanctuary: &str,
+    proj: &Project,
+    mut output_cb: impl FnMut(&str),
+) -> Result<(), ConfigError> {
     if proj.sync == "ignore" {
+        output_cb(&format!("skip {} (sync=ignore)", proj.name));
         return Ok(());
     }
 
@@ -87,8 +92,11 @@ pub fn sync_project(sanctuary: &str, proj: &Project) -> Result<(), ConfigError> 
     let git_dir = target_dir.join(".git");
 
     if git_dir.exists() {
+        output_cb(&format!("exists {} → {}", proj.name, target_dir.display()));
         return Ok(());
     }
+
+    output_cb(&format!("clone {} → {}", proj.name, target_dir.display()));
 
     let target_dir_str = target_dir.to_string_lossy().to_string();
     let args = if proj.branch.is_empty() {
@@ -97,18 +105,45 @@ pub fn sync_project(sanctuary: &str, proj: &Project) -> Result<(), ConfigError> 
         vec!["clone", "-b", &proj.branch, &proj.url, &target_dir_str]
     };
 
-    let output = Command::new("git").args(&args).output().map_err(|e| {
-        ConfigError::Validation(format!(
-            "failed to clone {}: git command failed: {}",
-            proj.name, e
-        ))
-    })?;
+    use std::process::Stdio;
+    use std::io::BufRead;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    let mut child = Command::new("git")
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| {
+            ConfigError::Validation(format!(
+                "failed to clone {}: git command failed: {}",
+                proj.name, e
+            ))
+        })?;
+
+    // Stream stdout line-by-line
+    if let Some(stdout) = child.stdout.take() {
+        let reader = std::io::BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            output_cb(&line);
+        }
+    }
+
+    // Stream stderr line-by-line
+    if let Some(stderr) = child.stderr.take() {
+        let reader = std::io::BufReader::new(stderr);
+        for line in reader.lines().map_while(Result::ok) {
+            output_cb(&line);
+        }
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| ConfigError::Validation(format!("failed to clone {}: {}", proj.name, e)))?;
+
+    if !status.success() {
         return Err(ConfigError::Validation(format!(
-            "failed to clone {}: {}",
-            proj.name, stderr
+            "failed to clone {}",
+            proj.name
         )));
     }
 
