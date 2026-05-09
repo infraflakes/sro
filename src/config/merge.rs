@@ -35,7 +35,6 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                 var_type,
                 ..
             } = stmt
-                && let Expr::BacktickLit { parts, .. } = value
             {
                 if vars.contains_key(name) {
                     return Err(ConfigError::Validation(format!(
@@ -44,22 +43,37 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                     )));
                 }
 
-                let mut resolved = String::new();
-                for part in parts {
-                    if part.is_var {
-                        let var_name = part.value.trim_start_matches('$');
-                        if let Some(value) = vars.get(var_name) {
-                            resolved.push_str(value);
+                let resolved = match value {
+                    Expr::BacktickLit { parts, .. } => {
+                        let mut s = String::new();
+                        for part in parts {
+                            if part.is_var {
+                                let var_name = part.value.trim_start_matches('$');
+                                if let Some(v) = vars.get(var_name) {
+                                    s.push_str(v);
+                                } else {
+                                    return Err(ConfigError::Validation(format!(
+                                        "undefined variable in var declaration: ${}",
+                                        var_name
+                                    )));
+                                }
+                            } else {
+                                s.push_str(&part.value);
+                            }
+                        }
+                        s
+                    }
+                    Expr::VarRef { name: ref_name, .. } => {
+                        if let Some(v) = vars.get(ref_name) {
+                            v.clone()
                         } else {
                             return Err(ConfigError::Validation(format!(
-                                "undefined variable in var declaration: ${}",
-                                var_name
+                                "undefined variable: ${}",
+                                ref_name
                             )));
                         }
-                    } else {
-                        resolved.push_str(&part.value);
                     }
-                }
+                };
 
                 let final_value = if var_type == &VarType::Shell {
                     if shell.is_empty() {

@@ -8,6 +8,7 @@ build:
 	cargo build --release
 
 test:
+	cargo test
 	cargo clippy
 	cargo fmt --check
 

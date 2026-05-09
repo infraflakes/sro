@@ -11,6 +11,9 @@ mod fn_seq_par;
 mod globals;
 mod project;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Error, Diagnostic)]
 #[error("{msg}")]
 pub struct ParseError {
