@@ -2,19 +2,35 @@ mod exec;
 mod sync;
 mod validate;
 
+use crate::config::{Config, ConfigError, load};
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+fn load_config(config_arg: Option<PathBuf>) -> miette::Result<Config> {
+    let config_path = get_config_path(config_arg);
+    load(&config_path).map_err(|e| {
+        if let ConfigError::ParseReports(reports) = e {
+            print_parse_errors(reports)
+        } else {
+            miette::miette!("{}", e)
+        }
+    })
+}
+
 fn print_parse_errors(reports: Vec<miette::Report>) -> miette::Report {
     let count = reports.len();
-    eprintln!();
-    for (i, report) in reports.into_iter().enumerate() {
-        if i > 0 {
-            eprintln!();
+    if count == 1 {
+        reports.into_iter().next().unwrap()
+    } else {
+        let mut combined = String::new();
+        for (i, report) in reports.into_iter().enumerate() {
+            if i > 0 {
+                combined.push('\n');
+            }
+            combined.push_str(&format!("{:?}", report));
         }
-        eprintln!("{:?}", report);
+        miette::miette!("{}\n{} parse error(s) found", combined, count)
     }
-    miette::miette!("{} parse error(s) found", count)
 }
 
 #[derive(Parser)]
@@ -79,6 +95,6 @@ fn get_config_path(config_arg: Option<PathBuf>) -> PathBuf {
 }
 
 fn run_version() -> miette::Result<()> {
-    println!("sro 0.0.1");
+    println!("sro {}", env!("CARGO_PKG_VERSION"));
     Ok(())
 }

@@ -1,5 +1,5 @@
-use crate::dsl::token::{Token, TokenType, lookup_ident};
 use super::Lexer;
+use crate::dsl::token::{Token, TokenType, lookup_ident};
 
 impl Lexer {
     pub(super) fn read_char(&mut self) {
@@ -118,7 +118,12 @@ impl Lexer {
         let start_byte_offset = self.byte_offset;
 
         self.read_char(); // skip '.'
-        self.read_char(); // skip '/'
+        if self.ch == Some('.') {
+            self.read_char(); // skip second '.' for '..'
+        }
+        if self.ch == Some('/') {
+            self.read_char(); // skip '/'
+        }
 
         while let Some(c) = self.ch {
             if !c.is_whitespace() && c != ',' && c != ']' && c != ';' {

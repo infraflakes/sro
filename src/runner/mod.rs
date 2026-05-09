@@ -2,12 +2,13 @@ pub mod context;
 pub mod resolver;
 
 use crate::config::{Config, ConfigError};
-use crate::dsl::ast::{ParStmt, SeqStmt, Stmt};
+use crate::dsl::ast::{BlockStmt, Stmt};
 pub use context::{ExecContext, OutputCallback};
 use std::io::{self, Write};
+use std::sync::Arc;
 
 pub struct Runner {
-    cfg: Config,
+    cfg: Arc<Config>,
     writer: Box<dyn Write>,
     suppress_headers: bool,
     output_callback: Option<OutputCallback>,
@@ -16,23 +17,20 @@ pub struct Runner {
 impl Runner {
     pub fn new(cfg: Config) -> Self {
         Runner {
-            cfg,
+            cfg: Arc::new(cfg),
             writer: Box::new(io::stdout()),
             suppress_headers: false,
             output_callback: None,
         }
     }
 
-    #[allow(dead_code)]
-    pub fn with_writer(mut self, writer: Box<dyn Write>) -> Self {
-        self.writer = writer;
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn suppress_headers(mut self, suppress: bool) -> Self {
-        self.suppress_headers = suppress;
-        self
+    pub fn from_arc(cfg: Arc<Config>) -> Self {
+        Runner {
+            cfg,
+            writer: Box::new(io::stdout()),
+            suppress_headers: false,
+            output_callback: None,
+        }
     }
 
     pub fn with_output_callback(mut self, callback: OutputCallback) -> Self {
@@ -107,14 +105,14 @@ impl Runner {
         if let Stmt::SeqDecl { stmts, .. } = seq_decl {
             for stmt in stmts {
                 match stmt {
-                    SeqStmt::FnCall {
+                    BlockStmt::FnCall {
                         fn_name,
                         project_name,
                         ..
                     } => {
                         self.execute_fn_call(fn_name, project_name)?;
                     }
-                    SeqStmt::SeqRef { seq_name, .. } => {
+                    BlockStmt::SeqRef { seq_name, .. } => {
                         let ref_seq = self
                             .cfg
                             .seqs
@@ -148,29 +146,35 @@ impl Runner {
     }
 
     fn execute_par(&mut self, par_decl: &Stmt) -> Result<(), ConfigError> {
-        // For now, execute sequentially
         if let Stmt::ParDecl { stmts, .. } = par_decl {
+            let mut handles = Vec::new();
             for stmt in stmts {
-                match stmt {
-                    ParStmt::FnCall {
-                        fn_name,
-                        project_name,
-                        ..
-                    } => {
-                        self.execute_fn_call(fn_name, project_name)?;
+                let cfg = Arc::clone(&self.cfg);
+                let stmt = stmt.clone();
+                handles.push(std::thread::spawn(move || {
+                    let mut runner = Runner::from_arc(cfg);
+                    match stmt {
+                        BlockStmt::FnCall {
+                            fn_name,
+                            project_name,
+                            ..
+                        } => runner.execute_fn_call(&fn_name, &project_name),
+                        BlockStmt::SeqRef { seq_name, .. } => runner.run_seq(&seq_name),
                     }
-                    ParStmt::SeqRef { seq_name, .. } => {
-                        let ref_seq = self
-                            .cfg
-                            .seqs
-                            .get(seq_name)
-                            .ok_or_else(|| {
-                                ConfigError::Validation(format!("unknown seq: {}", seq_name))
-                            })?
-                            .clone();
-                        self.execute_seq(&ref_seq)?;
-                    }
+                }));
+            }
+
+            let mut errors = Vec::new();
+            for handle in handles {
+                match handle.join() {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => errors.push(e.to_string()),
+                    Err(_) => errors.push("par task panicked".to_string()),
                 }
+            }
+
+            if !errors.is_empty() {
+                return Err(ConfigError::Validation(errors.join("\n")));
             }
         }
         Ok(())

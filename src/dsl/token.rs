@@ -1,12 +1,9 @@
 #[derive(Debug, Clone, PartialEq)]
-#[allow(clippy::enum_variant_names)]
 #[allow(clippy::upper_case_acronyms)]
-#[allow(dead_code)]
 pub enum TokenType {
     EOF,
     Illegal(String),
     Ident(String),
-    String(String),
     Backtick(String),
     LBrace,
     RBrace,
@@ -15,10 +12,8 @@ pub enum TokenType {
     LBracket,
     RBracket,
     Semicolon,
-    Colon,
     Comma,
     Dot,
-    Equal,
     Assign,
     Dollar,
     Import,
@@ -26,12 +21,10 @@ pub enum TokenType {
     Sanctuary,
     Var,
     StringKw,
-    ShellKw,
     Fn,
     Seq,
     Par,
     Pr,
-    Use,
     Log,
     Exec,
     Cd,

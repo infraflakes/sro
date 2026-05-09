@@ -72,13 +72,13 @@ pub enum Stmt {
         #[allow(dead_code)]
         span: Span,
         name: String,
-        stmts: Vec<SeqStmt>,
+        stmts: Vec<BlockStmt>,
     },
     ParDecl {
         #[allow(dead_code)]
         span: Span,
         name: String,
-        stmts: Vec<ParStmt>,
+        stmts: Vec<BlockStmt>,
     },
 }
 
@@ -133,22 +133,7 @@ pub struct EnvPair {
 }
 
 #[derive(Debug, Clone)]
-pub enum SeqStmt {
-    FnCall {
-        #[allow(dead_code)]
-        span: Span,
-        fn_name: String,
-        project_name: String,
-    },
-    SeqRef {
-        #[allow(dead_code)]
-        span: Span,
-        seq_name: String,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum ParStmt {
+pub enum BlockStmt {
     FnCall {
         #[allow(dead_code)]
         span: Span,

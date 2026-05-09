@@ -29,7 +29,7 @@ impl<'a> ExecContext<'a> {
             project,
             writer,
             output_callback,
-            vars: HashMap::new(),
+            vars: cfg.vars.clone(),
             env_stack: Vec::new(),
             work_dir: PathBuf::from(&cfg.sanctuary).join(&project.dir),
         }
@@ -240,5 +240,4 @@ impl<'a> ExecContext<'a> {
 
         result
     }
-
 }

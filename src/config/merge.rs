@@ -17,7 +17,9 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
         for stmt in &program.stmts {
             if let Stmt::ShellDecl { value, .. } = stmt {
                 if !shell.is_empty() {
-                    return Err(ConfigError::Validation("duplicate shell declaration".to_string()));
+                    return Err(ConfigError::Validation(
+                        "duplicate shell declaration".to_string(),
+                    ));
                 }
                 shell = value.clone();
             }
@@ -36,14 +38,28 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                 && let Expr::BacktickLit { parts, .. } = value
             {
                 if vars.contains_key(name) {
-                    return Err(ConfigError::Validation(format!("duplicate variable: {}", name)));
+                    return Err(ConfigError::Validation(format!(
+                        "duplicate variable: {}",
+                        name
+                    )));
                 }
 
-                let resolved: String = parts
-                    .iter()
-                    .filter(|p| !p.is_var)
-                    .map(|p| p.value.as_str())
-                    .collect();
+                let mut resolved = String::new();
+                for part in parts {
+                    if part.is_var {
+                        let var_name = part.value.trim_start_matches('$');
+                        if let Some(value) = vars.get(var_name) {
+                            resolved.push_str(value);
+                        } else {
+                            return Err(ConfigError::Validation(format!(
+                                "undefined variable in var declaration: ${}",
+                                var_name
+                            )));
+                        }
+                    } else {
+                        resolved.push_str(&part.value);
+                    }
+                }
 
                 let final_value = if var_type == &VarType::Shell {
                     if shell.is_empty() {
@@ -70,13 +86,18 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                 }
                 Stmt::SanctuaryDecl { value, .. } => {
                     if sanctuary_expr.is_some() {
-                        return Err(ConfigError::Validation("duplicate sanctuary declaration".to_string()));
+                        return Err(ConfigError::Validation(
+                            "duplicate sanctuary declaration".to_string(),
+                        ));
                     }
                     sanctuary_expr = Some(value);
                 }
                 Stmt::ProjectDecl { name, fields, .. } => {
                     if projects.contains_key(&name) {
-                        return Err(ConfigError::Validation(format!("duplicate project: {}", name)));
+                        return Err(ConfigError::Validation(format!(
+                            "duplicate project: {}",
+                            name
+                        )));
                     }
                     let mut project = Project {
                         name: name.clone(),
@@ -88,35 +109,23 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                     };
 
                     for field in fields {
+                        let value = resolve_expr(&field.value, &vars)?;
                         match field.key.as_str() {
-                            "url" => {
-                                if let Expr::BacktickLit { parts, .. } = &field.value {
-                                    project.url = parts.iter().map(|p| p.value.clone()).collect();
-                                }
-                            }
-                            "dir" => {
-                                if let Expr::BacktickLit { parts, .. } = &field.value {
-                                    project.dir = parts.iter().map(|p| p.value.clone()).collect();
-                                }
-                            }
-                            "sync" => {
-                                if let Expr::BacktickLit { parts, .. } = &field.value {
-                                    project.sync = parts.iter().map(|p| p.value.clone()).collect();
-                                }
-                            }
+                            "url" => project.url = value,
+                            "dir" => project.dir = value,
+                            "sync" => project.sync = value,
                             "use" => {
-                                if let Expr::BacktickLit { parts, .. } = &field.value {
-                                    project.use_file =
-                                        Some(parts.iter().map(|p| p.value.clone()).collect());
+                                if !value.is_empty() {
+                                    project.use_file = Some(value);
                                 }
                             }
-                            "branch" => {
-                                if let Expr::BacktickLit { parts, .. } = &field.value {
-                                    project.branch =
-                                        parts.iter().map(|p| p.value.clone()).collect();
-                                }
+                            "branch" => project.branch = value,
+                            _ => {
+                                return Err(ConfigError::Validation(format!(
+                                    "unknown project field: {}",
+                                    field.key
+                                )));
                             }
-                            _ => {}
                         }
                     }
 
@@ -124,7 +133,10 @@ pub fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
                 }
                 Stmt::FnDecl { ref name, .. } => {
                     if functions.contains_key(name) {
-                        return Err(ConfigError::Validation(format!("duplicate function: {}", name)));
+                        return Err(ConfigError::Validation(format!(
+                            "duplicate function: {}",
+                            name
+                        )));
                     }
                     functions.insert(name.clone(), stmt);
                 }
@@ -172,6 +184,11 @@ pub fn resolve_expr(expr: &Expr, vars: &HashMap<String, String>) -> Result<Strin
                     let var_name = part.value.trim_start_matches('$');
                     if let Some(value) = vars.get(var_name) {
                         result.push_str(value);
+                    } else {
+                        return Err(ConfigError::Validation(format!(
+                            "undefined variable: ${}",
+                            var_name
+                        )));
                     }
                 } else {
                     result.push_str(&part.value);
@@ -183,7 +200,10 @@ pub fn resolve_expr(expr: &Expr, vars: &HashMap<String, String>) -> Result<Strin
             if let Some(value) = vars.get(name) {
                 Ok(value.clone())
             } else {
-                Ok(format!("${}", name))
+                Err(ConfigError::Validation(format!(
+                    "undefined variable: ${}",
+                    name
+                )))
             }
         }
     }

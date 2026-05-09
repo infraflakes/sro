@@ -1,25 +1,17 @@
-use crate::config::load;
+use super::load_config;
 use crate::sync;
 use crate::tui::{self, TaskStatus, TuiApp, TuiEvent};
 use std::io;
 use std::path::PathBuf;
-use super::{get_config_path, print_parse_errors};
 
 pub fn run(config_arg: Option<PathBuf>, plain: bool) -> miette::Result<()> {
-    let config_path = get_config_path(config_arg);
-    let config = load(&config_path).map_err(|e| {
-        if let crate::config::ConfigError::ParseReports(reports) = e {
-            print_parse_errors(reports)
-        } else {
-            miette::miette!("{}", e)
-        }
-    })?;
+    let config = load_config(config_arg)?;
 
     if plain {
         let mut stdout = io::stdout();
         sync::sync_all(&config, &mut stdout).map_err(|e| miette::miette!("{}", e))?;
     } else {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().map_err(|e| miette::miette!("{}", e))?;
         rt.block_on(async {
             let project_names: Vec<String> = config.projects.keys().cloned().collect();
             let mut model = tui::Model::new("sync".to_string(), "all".to_string());

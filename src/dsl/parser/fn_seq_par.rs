@@ -1,4 +1,4 @@
-use super::super::*;
+use super::*;
 use crate::dsl::token::TokenType;
 
 impl Parser {
@@ -54,7 +54,7 @@ impl Parser {
 
         let mut stmts = Vec::new();
         while self.current_token().ty != TokenType::RBrace {
-            stmts.push(self.parse_seq_stmt()?);
+            stmts.push(self.parse_block_stmt()?);
         }
 
         self.expect(TokenType::RBrace)?;
@@ -84,7 +84,7 @@ impl Parser {
 
         let mut stmts = Vec::new();
         while self.current_token().ty != TokenType::RBrace {
-            stmts.push(self.parse_par_stmt()?);
+            stmts.push(self.parse_block_stmt()?);
         }
 
         self.expect(TokenType::RBrace)?;

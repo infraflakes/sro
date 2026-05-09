@@ -1,4 +1,4 @@
-use super::super::*;
+use super::*;
 use crate::dsl::token::TokenType;
 
 impl Parser {
@@ -55,7 +55,10 @@ impl Parser {
         self.advance();
         self.expect(TokenType::Semicolon)?;
 
-        Ok(Stmt::ImportDecl { span, paths: vec![path] })
+        Ok(Stmt::ImportDecl {
+            span,
+            paths: vec![path],
+        })
     }
 
     pub(crate) fn parse_var_decl(&mut self) -> Result<Stmt, ParseError> {

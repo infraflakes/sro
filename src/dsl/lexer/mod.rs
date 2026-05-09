@@ -115,7 +115,9 @@ impl Lexer {
                 )
             }
             Some('.') => {
-                if self.peek() == Some('/') {
+                if self.peek() == Some('/')
+                    || (self.peek() == Some('.') && self.input.get(self.read_pos + 1) == Some(&'/'))
+                {
                     self.read_path()
                 } else {
                     self.read_char();
@@ -240,5 +242,37 @@ mod tests {
             lexer.next_token().ty,
             TokenType::PathLit("./path/to/file.sro".to_string())
         );
+    }
+
+    #[test]
+    fn test_dotdot_path_literal() {
+        let input = "../path/to/file.sro";
+        let mut lexer = Lexer::new(input.to_string());
+
+        assert_eq!(
+            lexer.next_token().ty,
+            TokenType::PathLit("../path/to/file.sro".to_string())
+        );
+    }
+
+    #[test]
+    fn test_deep_dotdot_path_literal() {
+        let input = "../../dir/file.sro";
+        let mut lexer = Lexer::new(input.to_string());
+
+        assert_eq!(
+            lexer.next_token().ty,
+            TokenType::PathLit("../../dir/file.sro".to_string())
+        );
+    }
+
+    #[test]
+    fn test_dot_token_not_path() {
+        let mut lexer = Lexer::new(".".to_string());
+        assert_eq!(lexer.next_token().ty, TokenType::Dot);
+
+        let mut lexer = Lexer::new("..".to_string());
+        assert_eq!(lexer.next_token().ty, TokenType::Dot);
+        assert_eq!(lexer.next_token().ty, TokenType::Dot);
     }
 }

@@ -1,4 +1,4 @@
-use super::super::*;
+use super::*;
 use crate::dsl::token::TokenType;
 
 impl Parser {

@@ -1,4 +1,4 @@
-use super::super::*;
+use super::*;
 use crate::dsl::token::TokenType;
 
 impl Parser {
@@ -49,10 +49,6 @@ impl Parser {
 
         self.expect(TokenType::RBrace)?;
 
-        Ok(Stmt::ProjectDecl {
-            span,
-            name,
-            fields,
-        })
+        Ok(Stmt::ProjectDecl { span, name, fields })
     }
 }

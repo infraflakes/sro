@@ -4,9 +4,12 @@ use crate::dsl::token::{Token, TokenType};
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
+mod block;
 mod expr;
-mod decl;
-mod body;
+mod fn_body;
+mod fn_seq_par;
+mod globals;
+mod project;
 
 #[derive(Debug, Error, Diagnostic)]
 #[error("{msg}")]
@@ -35,12 +38,10 @@ fn format_token_type(ty: &TokenType) -> String {
         TokenType::Assign => "`=`".to_string(),
         TokenType::Dollar => "`$`".to_string(),
         TokenType::Dot => "`.`".to_string(),
-        TokenType::Shell => "`shell`".to_string(),
+        TokenType::Shell | TokenType::StringKw => "`shell`".to_string(),
         TokenType::Sanctuary => "`sanctuary`".to_string(),
         TokenType::Import => "`import`".to_string(),
         TokenType::Var => "`var`".to_string(),
-        TokenType::StringKw => "`string`".to_string(),
-        TokenType::ShellKw => "`shell`".to_string(),
         TokenType::Pr => "`pr`".to_string(),
         TokenType::Fn => "`fn`".to_string(),
         TokenType::Seq => "`seq`".to_string(),
@@ -49,15 +50,11 @@ fn format_token_type(ty: &TokenType) -> String {
         TokenType::Log => "`log`".to_string(),
         TokenType::Exec => "`exec`".to_string(),
         TokenType::Cd => "`cd`".to_string(),
-        TokenType::Use => "`use`".to_string(),
         TokenType::Ident(_) => "identifier".to_string(),
         TokenType::Backtick(_) => "backtick string".to_string(),
-        TokenType::String(_) => "string literal".to_string(),
         TokenType::PathLit(_) => "path literal".to_string(),
         TokenType::Illegal(_) => "illegal token".to_string(),
         TokenType::EOF => "end of file".to_string(),
-        TokenType::Colon => "`:`".to_string(),
-        TokenType::Equal => "`==`".to_string(),
     }
 }
 
@@ -65,7 +62,7 @@ fn format_token(token: &Token) -> String {
     match &token.ty {
         TokenType::Ident(s) => format!("`{}`", s),
         TokenType::Backtick(s) => format!("`{}`", s),
-        TokenType::String(s) => format!("\"{}\"", s),
+
         TokenType::PathLit(s) => format!("`{}`", s),
         TokenType::Illegal(s) => format!("`{}`", s),
         _ => format_token_type(&token.ty),
@@ -139,7 +136,6 @@ impl Parser {
                 EOF => break,
                 Semicolon | RBrace => {
                     self.advance();
-                    // Continue to skip more boundary tokens
                 }
                 Shell | Sanctuary | Import | Var | Pr | Fn | Seq | Par => break,
                 _ => self.advance(),
@@ -147,4 +143,43 @@ impl Parser {
         }
     }
 
+    pub(super) fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
+        match self.current_token().ty {
+            TokenType::Shell => self.parse_shell_decl(),
+            TokenType::Sanctuary => self.parse_sanctuary_decl(),
+            TokenType::Import => self.parse_import_decl(),
+            TokenType::Var => self.parse_var_decl(),
+            TokenType::Pr => self.parse_project_decl(),
+            TokenType::Fn => self.parse_fn_decl(),
+            TokenType::Seq => self.parse_seq_decl(),
+            TokenType::Par => self.parse_par_decl(),
+            _ => Err(ParseError::new(
+                miette::SourceSpan::new(
+                    self.current_token().offset.into(),
+                    self.current_token().len,
+                ),
+                format!(
+                    "unexpected token at top level: {:?}",
+                    self.current_token().ty
+                ),
+            )),
+        }
+    }
+
+    pub(crate) fn parse_fn_stmt(&mut self) -> Result<FnStmt, ParseError> {
+        match self.current_token().ty {
+            TokenType::Log => self.parse_log_stmt(),
+            TokenType::Exec => self.parse_exec_stmt(),
+            TokenType::Cd => self.parse_cd_stmt(),
+            TokenType::Var => self.parse_fn_var_decl(),
+            TokenType::Env => self.parse_env_block(),
+            _ => Err(ParseError::new(
+                miette::SourceSpan::new(
+                    self.current_token().offset.into(),
+                    self.current_token().len,
+                ),
+                format!("unexpected token in fn body: {:?}", self.current_token().ty),
+            )),
+        }
+    }
 }

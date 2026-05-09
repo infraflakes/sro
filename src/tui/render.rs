@@ -55,15 +55,11 @@ pub fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
             }
 
             // Task row
-            let spinner = if task.status == TaskStatus::Running {
-                SPINNER_FRAMES[spinner_idx].to_string()
-            } else {
-                match task.status {
-                    TaskStatus::Pending => "·".to_string(),
-                    TaskStatus::Success => "✓".to_string(),
-                    TaskStatus::Error => "✗".to_string(),
-                    TaskStatus::Running => unreachable!(),
-                }
+            let spinner = match task.status {
+                TaskStatus::Pending => "·".to_string(),
+                TaskStatus::Running => SPINNER_FRAMES[spinner_idx].to_string(),
+                TaskStatus::Success => "✓".to_string(),
+                TaskStatus::Error => "✗".to_string(),
             };
 
             let color = match task.status {

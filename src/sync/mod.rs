@@ -5,86 +5,35 @@ use std::path::PathBuf;
 use std::process::Command;
 
 pub fn sync_all(cfg: &Config, writer: &mut dyn Write) -> Result<(), ConfigError> {
-    // Create sanctuary directory
     fs::create_dir_all(&cfg.sanctuary).map_err(|e| {
         ConfigError::Validation(format!("cannot create sanctuary {}: {}", cfg.sanctuary, e))
     })?;
 
-    // Sync each project
     for proj in cfg.projects.values() {
-        sync_project_with_writer(cfg, proj, writer)?;
+        sync_project_inner(&cfg.sanctuary, proj, &mut |line: &str| {
+            let _ = writeln!(writer, "  {}", line);
+        })?;
     }
 
-    // Warn about unknown repos
-    warn_unknown_repos_with_writer(cfg, writer)?;
-
-    Ok(())
-}
-
-pub fn sync_project_with_writer(
-    cfg: &Config,
-    proj: &Project,
-    writer: &mut dyn Write,
-) -> Result<(), ConfigError> {
-    if proj.sync == "ignore" {
-        writeln!(writer, "  skip  {} (sync=ignore)", proj.name)
-            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-        return Ok(());
-    }
-
-    let target_dir = PathBuf::from(&cfg.sanctuary).join(&proj.dir);
-    let git_dir = target_dir.join(".git");
-
-    if git_dir.exists() {
-        writeln!(writer, "  exists  {} → {}", proj.name, target_dir.display())
-            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-        return Ok(());
-    }
-
-    writeln!(writer, "  clone  {} → {}", proj.name, target_dir.display())
-        .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-
-    let target_dir_str = target_dir.to_string_lossy().to_string();
-    let args = if proj.branch.is_empty() {
-        vec!["clone", &proj.url, &target_dir_str]
-    } else {
-        vec!["clone", "-b", &proj.branch, &proj.url, &target_dir_str]
-    };
-
-    let output = Command::new("git").args(&args).output().map_err(|e| {
-        ConfigError::Validation(format!(
-            "failed to clone {}: git command failed: {}",
-            proj.name, e
-        ))
+    let mut buf = Vec::new();
+    warn_unknown_repos_inner(&cfg.sanctuary, &cfg.projects, &mut |line: &str| {
+        buf.push(line.to_string());
     })?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(ConfigError::Validation(format!(
-            "failed to clone {}: {}",
-            proj.name, stderr
-        )));
-    }
-
-    // Write clone output
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    if !stdout.is_empty() {
-        for line in stdout.lines() {
-            writeln!(writer, "    {}", line)
-                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-        }
+    for line in buf {
+        writeln!(writer, "{}", line)
+            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
     }
 
     Ok(())
 }
 
-pub fn sync_project_with_callback(
+fn sync_project_inner(
     sanctuary: &str,
     proj: &Project,
-    mut output_cb: impl FnMut(&str),
+    output: &mut dyn FnMut(&str),
 ) -> Result<(), ConfigError> {
     if proj.sync == "ignore" {
-        output_cb(&format!("skip {} (sync=ignore)", proj.name));
+        output(&format!("skip  {} (sync=ignore)", proj.name));
         return Ok(());
     }
 
@@ -92,11 +41,11 @@ pub fn sync_project_with_callback(
     let git_dir = target_dir.join(".git");
 
     if git_dir.exists() {
-        output_cb(&format!("exists {} → {}", proj.name, target_dir.display()));
+        output(&format!("exists  {} → {}", proj.name, target_dir.display()));
         return Ok(());
     }
 
-    output_cb(&format!("clone {} → {}", proj.name, target_dir.display()));
+    output(&format!("clone  {} → {}", proj.name, target_dir.display()));
 
     let target_dir_str = target_dir.to_string_lossy().to_string();
     let args = if proj.branch.is_empty() {
@@ -105,8 +54,8 @@ pub fn sync_project_with_callback(
         vec!["clone", "-b", &proj.branch, &proj.url, &target_dir_str]
     };
 
-    use std::process::Stdio;
     use std::io::BufRead;
+    use std::process::Stdio;
 
     let mut child = Command::new("git")
         .args(&args)
@@ -120,19 +69,20 @@ pub fn sync_project_with_callback(
             ))
         })?;
 
-    // Stream stdout line-by-line
     if let Some(stdout) = child.stdout.take() {
-        let reader = std::io::BufReader::new(stdout);
-        for line in reader.lines().map_while(Result::ok) {
-            output_cb(&line);
+        for line in std::io::BufReader::new(stdout).lines() {
+            let line = line.map_err(|e| {
+                ConfigError::Validation(format!("failed to read clone output: {}", e))
+            })?;
+            output(&format!("    {}", line));
         }
     }
-
-    // Stream stderr line-by-line
     if let Some(stderr) = child.stderr.take() {
-        let reader = std::io::BufReader::new(stderr);
-        for line in reader.lines().map_while(Result::ok) {
-            output_cb(&line);
+        for line in std::io::BufReader::new(stderr).lines() {
+            let line = line.map_err(|e| {
+                ConfigError::Validation(format!("failed to read clone output: {}", e))
+            })?;
+            output(&line);
         }
     }
 
@@ -150,9 +100,18 @@ pub fn sync_project_with_callback(
     Ok(())
 }
 
-pub fn warn_unknown_repos(
+pub fn sync_project_with_callback(
+    sanctuary: &str,
+    proj: &Project,
+    mut output_cb: impl FnMut(&str),
+) -> Result<(), ConfigError> {
+    sync_project_inner(sanctuary, proj, &mut output_cb)
+}
+
+fn warn_unknown_repos_inner(
     sanctuary: &str,
     projects: &std::collections::HashMap<String, Project>,
+    output: &mut dyn FnMut(&str),
 ) -> Result<(), ConfigError> {
     let mut known_dirs = std::collections::HashSet::new();
     for proj in projects.values() {
@@ -164,7 +123,6 @@ pub fn warn_unknown_repos(
         Err(_) => return Ok(()),
     };
 
-    let mut warnings = Vec::new();
     for entry in entries {
         let entry = entry
             .map_err(|e| ConfigError::Validation(format!("failed to read sanctuary: {}", e)))?;
@@ -178,55 +136,26 @@ pub fn warn_unknown_repos(
         }
         let git_dir = PathBuf::from(sanctuary).join(&name_str).join(".git");
         if git_dir.exists() {
-            warnings.push(format!(
-                "{}/{} is a git repo not in your config",
+            output(&format!(
+                "  warn  {}/{} is a git repo not in your config",
                 sanctuary, name_str
             ));
         }
     }
 
-    if !warnings.is_empty() {
-        return Err(ConfigError::Validation(warnings.join("\n")));
-    }
-
     Ok(())
 }
 
-pub fn warn_unknown_repos_with_writer(
-    cfg: &Config,
-    writer: &mut dyn Write,
+pub fn warn_unknown_repos(
+    sanctuary: &str,
+    projects: &std::collections::HashMap<String, Project>,
 ) -> Result<(), ConfigError> {
-    let mut known_dirs = std::collections::HashSet::new();
-    for proj in cfg.projects.values() {
-        known_dirs.insert(&proj.dir);
+    let mut warnings = Vec::new();
+    warn_unknown_repos_inner(sanctuary, projects, &mut |line: &str| {
+        warnings.push(line.to_string());
+    })?;
+    if !warnings.is_empty() {
+        return Err(ConfigError::Validation(warnings.join("\n")));
     }
-
-    let entries = match fs::read_dir(&cfg.sanctuary) {
-        Ok(e) => e,
-        Err(_) => return Ok(()),
-    };
-
-    for entry in entries {
-        let entry = entry
-            .map_err(|e| ConfigError::Validation(format!("failed to read sanctuary: {}", e)))?;
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy().to_string();
-        if known_dirs.contains(&name_str) {
-            continue;
-        }
-        let git_dir = PathBuf::from(&cfg.sanctuary).join(&name_str).join(".git");
-        if git_dir.exists() {
-            writeln!(
-                writer,
-                "  warn  {}/{} is a git repo not in your config",
-                cfg.sanctuary, name_str
-            )
-            .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
-        }
-    }
-
     Ok(())
 }
