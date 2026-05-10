@@ -1,11 +1,15 @@
 .PHONY: build fmt test clean
+DOCKER_BIN := $(shell command -v docker 2> /dev/null || command -v podman 2> /dev/null)
 
 init:
 	dagger develop
 	cargo check
 
-build:
-	cargo build --release
+build: clean
+ifeq ($(DOCKER_BIN),)
+	$(error "Neither docker nor podman found in PATH! (＃￣ω￣)")
+endif
+	$(DOCKER_BIN) build --output type=local,dest=bin .
 
 test:
 	cargo test
@@ -17,4 +21,4 @@ fmt:
 	cargo fmt
 
 clean:
-	rm -rf target
+	rm -rf bin

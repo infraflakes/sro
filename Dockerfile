@@ -1,0 +1,8 @@
+FROM rust:alpine AS builder
+RUN apk add --no-cache musl-dev gcc make pkgconfig
+WORKDIR /src
+COPY . .
+RUN cargo build --release --target x86_64-unknown-linux-musl
+
+FROM scratch AS bin
+COPY --from=builder /src/target/x86_64-unknown-linux-musl/release/sro /

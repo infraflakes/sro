@@ -40,6 +40,8 @@
             allowBuiltinFetchGit = true;
           };
 
+          nativeBuildInputs = [pkgs.installShellFiles];
+
           postInstall = ''
             installShellCompletion --cmd sro \
               --bash completions/sro.bash \
