@@ -28,6 +28,10 @@ impl Lexer {
         lexer
     }
 
+    pub(crate) fn into_source(self) -> String {
+        self.input.into_iter().collect()
+    }
+
     pub fn next_token(&mut self) -> Token {
         loop {
             self.skip_whitespace();

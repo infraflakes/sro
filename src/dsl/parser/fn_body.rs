@@ -1,64 +1,51 @@
 use super::*;
-use crate::dsl::token::TokenType;
 
 impl Parser {
     pub(crate) fn parse_log_stmt(&mut self) -> Result<FnStmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'log'
+        self.advance();
 
         self.expect(TokenType::LParen)?;
         let value = self.parse_expr()?;
         self.expect(TokenType::RParen)?;
         self.expect(TokenType::Semicolon)?;
 
-        Ok(FnStmt::Log { span, value })
+        Ok(FnStmt::Log { value })
     }
 
     pub(crate) fn parse_exec_stmt(&mut self) -> Result<FnStmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'exec'
+        self.advance();
 
         self.expect(TokenType::LParen)?;
         let value = self.parse_expr()?;
         self.expect(TokenType::RParen)?;
         self.expect(TokenType::Semicolon)?;
 
-        Ok(FnStmt::Exec { span, value })
+        Ok(FnStmt::Exec { value })
     }
 
     pub(crate) fn parse_cd_stmt(&mut self) -> Result<FnStmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'cd'
-
-        self.expect(TokenType::LParen)?;
-
-        let arg = match &self.current_token().ty {
-            TokenType::Backtick(s) => s.clone(),
-            _ => {
-                return Err(ParseError::new(
-                    miette::SourceSpan::new(
-                        self.current_token().offset.into(),
-                        self.current_token().len,
-                    ),
-                    "expected backtick string".to_string(),
-                ));
-            }
-        };
         self.advance();
 
+        self.expect(TokenType::LParen)?;
+        let arg = self.parse_simple_backtick()?;
         self.expect(TokenType::RParen)?;
         self.expect(TokenType::Semicolon)?;
 
-        Ok(FnStmt::Cd { span, arg })
+        Ok(FnStmt::Cd { arg })
     }
 
     pub(crate) fn parse_fn_var_decl(&mut self) -> Result<FnStmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'var'
+        self.advance();
 
-        let var_type = match self.current_token().ty {
-            TokenType::StringKw => VarType::String,
-            TokenType::Shell => VarType::Shell,
+        let var_type = match &self.current_token().ty {
+            TokenType::StringKw => {
+                self.advance();
+                VarType::String
+            }
+            TokenType::Shell => {
+                self.advance();
+                VarType::Shell
+            }
             _ => {
                 return Err(ParseError::new(
                     miette::SourceSpan::new(
@@ -69,7 +56,6 @@ impl Parser {
                 ));
             }
         };
-        self.advance();
 
         let name = match &self.current_token().ty {
             TokenType::Ident(n) => n.clone(),
@@ -88,11 +74,9 @@ impl Parser {
         self.expect(TokenType::Assign)?;
 
         let value = self.parse_expr()?;
-
         self.expect(TokenType::Semicolon)?;
 
         Ok(FnStmt::VarDecl {
-            span,
             var_type,
             name,
             value,
@@ -100,8 +84,7 @@ impl Parser {
     }
 
     pub(crate) fn parse_env_block(&mut self) -> Result<FnStmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'env'
+        self.advance();
 
         self.expect(TokenType::LBracket)?;
 
@@ -115,7 +98,7 @@ impl Parser {
                             self.current_token().offset.into(),
                             self.current_token().len,
                         ),
-                        "expected identifier".to_string(),
+                        "expected identifier in env pair".to_string(),
                     ));
                 }
             };
@@ -124,25 +107,36 @@ impl Parser {
             self.expect(TokenType::Assign)?;
 
             let value = self.parse_expr()?;
-
             pairs.push(EnvPair { key, value });
 
-            if self.current_token().ty == TokenType::Comma {
-                self.advance();
+            match &self.current_token().ty {
+                TokenType::Comma => {
+                    self.advance();
+                }
+                TokenType::RBracket => break,
+                _ => {
+                    return Err(ParseError::new(
+                        miette::SourceSpan::new(
+                            self.current_token().offset.into(),
+                            self.current_token().len,
+                        ),
+                        "expected `,` or `]`".to_string(),
+                    ));
+                }
             }
         }
-
         self.expect(TokenType::RBracket)?;
+
         self.expect(TokenType::LBrace)?;
 
         let mut body = Vec::new();
         while self.current_token().ty != TokenType::RBrace {
             body.push(self.parse_fn_stmt()?);
         }
-
         self.expect(TokenType::RBrace)?;
+
         self.expect(TokenType::Semicolon)?;
 
-        Ok(FnStmt::EnvBlock { span, pairs, body })
+        Ok(FnStmt::EnvBlock { pairs, body })
     }
 }

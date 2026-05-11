@@ -2,7 +2,6 @@
 DOCKER_BIN := $(shell command -v docker 2> /dev/null || command -v podman 2> /dev/null)
 
 init:
-	dagger develop
 	cargo check
 
 build: clean
@@ -22,3 +21,4 @@ fmt:
 
 clean:
 	rm -rf bin
+	rm -rf result

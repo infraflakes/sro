@@ -28,36 +28,36 @@ impl ParseError {
     }
 }
 
-fn format_token_type(ty: &TokenType) -> String {
+fn format_token_type(ty: &TokenType) -> &'static str {
     match ty {
-        TokenType::LBrace => "`{`".to_string(),
-        TokenType::RBrace => "`}`".to_string(),
-        TokenType::LParen => "`(`".to_string(),
-        TokenType::RParen => "`)`".to_string(),
-        TokenType::LBracket => "`[`".to_string(),
-        TokenType::RBracket => "`]`".to_string(),
-        TokenType::Semicolon => "`;`".to_string(),
-        TokenType::Comma => "`,`".to_string(),
-        TokenType::Assign => "`=`".to_string(),
-        TokenType::Dollar => "`$`".to_string(),
-        TokenType::Dot => "`.`".to_string(),
-        TokenType::Shell | TokenType::StringKw => "`shell`".to_string(),
-        TokenType::Sanctuary => "`sanctuary`".to_string(),
-        TokenType::Import => "`import`".to_string(),
-        TokenType::Var => "`var`".to_string(),
-        TokenType::Pr => "`pr`".to_string(),
-        TokenType::Fn => "`fn`".to_string(),
-        TokenType::Seq => "`seq`".to_string(),
-        TokenType::Par => "`par`".to_string(),
-        TokenType::Env => "`env`".to_string(),
-        TokenType::Log => "`log`".to_string(),
-        TokenType::Exec => "`exec`".to_string(),
-        TokenType::Cd => "`cd`".to_string(),
-        TokenType::Ident(_) => "identifier".to_string(),
-        TokenType::Backtick(_) => "backtick string".to_string(),
-        TokenType::PathLit(_) => "path literal".to_string(),
-        TokenType::Illegal(_) => "illegal token".to_string(),
-        TokenType::EOF => "end of file".to_string(),
+        TokenType::LBrace => "`{`",
+        TokenType::RBrace => "`}`",
+        TokenType::LParen => "`(`",
+        TokenType::RParen => "`)`",
+        TokenType::LBracket => "`[`",
+        TokenType::RBracket => "`]`",
+        TokenType::Semicolon => "`;`",
+        TokenType::Comma => "`,`",
+        TokenType::Assign => "`=`",
+        TokenType::Dollar => "`$`",
+        TokenType::Dot => "`.`",
+        TokenType::Shell | TokenType::StringKw => "`shell`",
+        TokenType::Sanctuary => "`sanctuary`",
+        TokenType::Import => "`import`",
+        TokenType::Var => "`var`",
+        TokenType::Pr => "`pr`",
+        TokenType::Fn => "`fn`",
+        TokenType::Seq => "`seq`",
+        TokenType::Par => "`par`",
+        TokenType::Env => "`env`",
+        TokenType::Log => "`log`",
+        TokenType::Exec => "`exec`",
+        TokenType::Cd => "`cd`",
+        TokenType::Ident(_) => "identifier",
+        TokenType::Backtick(_) => "backtick string",
+        TokenType::PathLit(_) => "path literal",
+        TokenType::Illegal(_) => "illegal token",
+        TokenType::EOF => "end of file",
     }
 }
 
@@ -65,10 +65,9 @@ fn format_token(token: &Token) -> String {
     match &token.ty {
         TokenType::Ident(s) => format!("`{}`", s),
         TokenType::Backtick(s) => format!("`{}`", s),
-
         TokenType::PathLit(s) => format!("`{}`", s),
         TokenType::Illegal(s) => format!("`{}`", s),
-        _ => format_token_type(&token.ty),
+        _ => format_token_type(&token.ty).to_string(),
     }
 }
 
@@ -87,21 +86,16 @@ impl Parser {
         &self.current
     }
 
-    #[allow(dead_code)]
-    fn peek_token(&self) -> &Token {
-        &self.current
-    }
-
     fn advance(&mut self) {
         self.current = self.lexer.next_token();
     }
 
-    fn expect(&mut self, ty: TokenType) -> Result<Token, ParseError> {
-        let token = self.current_token().clone();
-        if std::mem::discriminant(&token.ty) == std::mem::discriminant(&ty) {
+    fn expect(&mut self, ty: TokenType) -> Result<(), ParseError> {
+        if std::mem::discriminant(&self.current_token().ty) == std::mem::discriminant(&ty) {
             self.advance();
-            Ok(token)
+            Ok(())
         } else {
+            let token = self.current_token().clone();
             let expected = format_token_type(&ty);
             let found = format_token(&token);
             Err(ParseError::new(
@@ -116,7 +110,7 @@ impl Parser {
         let mut errors = Vec::new();
 
         while self.current_token().ty != TokenType::EOF {
-            match self.parse_stmt() {
+            match self.parse_toplevel_stmt() {
                 Ok(stmt) => program.stmts.push(stmt),
                 Err(e) => {
                     errors.push(e);
@@ -132,30 +126,13 @@ impl Parser {
         }
     }
 
-    fn skip_to_stmt_boundary(&mut self) {
-        use TokenType::*;
-        loop {
-            match &self.current_token().ty {
-                EOF => break,
-                Semicolon | RBrace => {
-                    self.advance();
-                }
-                Shell | Sanctuary | Import | Var | Pr | Fn | Seq | Par => break,
-                _ => self.advance(),
-            }
-        }
-    }
-
-    pub(super) fn parse_stmt(&mut self) -> Result<Stmt, ParseError> {
+    fn parse_toplevel_stmt(&mut self) -> Result<Stmt, ParseError> {
         match self.current_token().ty {
             TokenType::Shell => self.parse_shell_decl(),
             TokenType::Sanctuary => self.parse_sanctuary_decl(),
             TokenType::Import => self.parse_import_decl(),
             TokenType::Var => self.parse_var_decl(),
             TokenType::Pr => self.parse_project_decl(),
-            TokenType::Fn => self.parse_fn_decl(),
-            TokenType::Seq => self.parse_seq_decl(),
-            TokenType::Par => self.parse_par_decl(),
             _ => Err(ParseError::new(
                 miette::SourceSpan::new(
                     self.current_token().offset.into(),
@@ -167,6 +144,43 @@ impl Parser {
                 ),
             )),
         }
+    }
+
+    pub(crate) fn parse_project_body_stmt(&mut self) -> Result<Stmt, ParseError> {
+        match self.current_token().ty {
+            TokenType::Var => self.parse_var_decl(),
+            TokenType::Fn => self.parse_fn_decl(),
+            TokenType::Seq => self.parse_seq_decl(),
+            TokenType::Par => self.parse_par_decl(),
+            _ => Err(ParseError::new(
+                miette::SourceSpan::new(
+                    self.current_token().offset.into(),
+                    self.current_token().len,
+                ),
+                format!(
+                    "unexpected token in project body: {:?}",
+                    self.current_token().ty
+                ),
+            )),
+        }
+    }
+
+    fn skip_to_stmt_boundary(&mut self) {
+        use TokenType::*;
+        loop {
+            match &self.current_token().ty {
+                EOF => break,
+                Semicolon | RBrace => {
+                    self.advance();
+                }
+                Shell | Sanctuary | Import | Var | Pr => break,
+                _ => self.advance(),
+            }
+        }
+    }
+
+    pub(crate) fn into_source(self) -> String {
+        self.lexer.into_source()
     }
 
     pub(crate) fn parse_fn_stmt(&mut self) -> Result<FnStmt, ParseError> {

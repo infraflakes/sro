@@ -59,11 +59,22 @@ enum Commands {
     Seq {
         /// Name of the sequential block to run
         name: String,
+        /// Project to run the seq in
+        project: String,
     },
     /// Run a parallel execution block
     Par {
         /// Name of the parallel block to run
         name: String,
+        /// Project to run the par in
+        project: String,
+    },
+    /// Run a function directly
+    Fn {
+        /// Name of the function to run
+        name: String,
+        /// Project to run the function in
+        project: String,
     },
     /// Print the version number
     Version,
@@ -75,8 +86,9 @@ pub fn run() -> miette::Result<()> {
     match cli.command {
         Commands::Validate => validate::run(cli.config),
         Commands::Sync => sync::run(cli.config, cli.plain),
-        Commands::Seq { name } => exec::run_seq(cli.config, name, cli.plain),
-        Commands::Par { name } => exec::run_par(cli.config, name, cli.plain),
+        Commands::Seq { name, project } => exec::run_seq(cli.config, name, project, cli.plain),
+        Commands::Par { name, project } => exec::run_par(cli.config, name, project, cli.plain),
+        Commands::Fn { name, project } => exec::run_fn(cli.config, name, project, cli.plain),
         Commands::Version => run_version(),
     }
 }
@@ -86,7 +98,6 @@ fn get_config_path(config_arg: Option<PathBuf>) -> PathBuf {
         return path;
     }
 
-    // Default to ~/.config/sro/config.sro
     if let Some(config_dir) = dirs::config_dir() {
         return config_dir.join("sro").join("config.sro");
     }

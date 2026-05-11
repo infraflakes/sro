@@ -55,22 +55,25 @@ fn parse_recursive(
         ))
     })?;
 
-    let lexer = Lexer::new(data.clone());
+    let source_name = abs_path.display().to_string();
+    let lexer = Lexer::new(data);
     let mut parser = Parser::new(lexer);
-    let program = parser.parse().map_err(|errors| {
-        let source = data;
-        let source_name = abs_path.display().to_string();
-        let reports: Vec<miette::Report> = errors
-            .into_iter()
-            .map(|error| {
-                miette::Report::new(error).with_source_code(miette::NamedSource::new(
-                    source_name.clone(),
-                    source.clone(),
-                ))
-            })
-            .collect();
-        ConfigError::ParseReports(reports)
-    })?;
+    let program = match parser.parse() {
+        Ok(prog) => prog,
+        Err(errors) => {
+            let source = parser.into_source();
+            let reports: Vec<miette::Report> = errors
+                .into_iter()
+                .map(|error| {
+                    miette::Report::new(error).with_source_code(miette::NamedSource::new(
+                        source_name.clone(),
+                        source.clone(),
+                    ))
+                })
+                .collect();
+            return Err(ConfigError::ParseReports(reports));
+        }
+    };
 
     let mut results = Vec::new();
 
@@ -113,7 +116,6 @@ shell = `bash`;\n\
 sanctuary = `/tmp/dev`;\n\
 var string a = `hello`;\n\
 pr test { url = `http://example.com`; dir = `test`; }\n\
-fn greet { log(`hi`); }\
 ",
         );
         let cfg = load(&dir.path().join("main.sro")).unwrap();
@@ -122,7 +124,35 @@ fn greet { log(`hi`); }\
         assert_eq!(cfg.vars.get("a").unwrap(), "hello");
         assert!(cfg.projects.contains_key("test"));
         assert_eq!(cfg.projects["test"].url, "http://example.com");
-        assert!(cfg.functions.contains_key("greet"));
+    }
+
+    #[test]
+    fn test_load_with_project_body() {
+        let dir = tempfile::TempDir::new().unwrap();
+        write_config(
+            dir.path(),
+            "main.sro",
+            "\
+shell = `bash`;\n\
+sanctuary = `/tmp/dev`;\n\
+pr test {\n\
+    url = `http://example.com`;\n\
+    dir = `test`;\n\
+    var string app = `todo`;\n\
+    fn build { log(`hi`); }\n\
+    seq release { build; }\n\
+    par ci { build; }\n\
+}\n\
+",
+        );
+        let cfg = load(&dir.path().join("main.sro")).unwrap();
+        let proj = &cfg.projects["test"];
+        assert_eq!(proj.vars.get("app").unwrap(), "todo");
+        assert!(proj.functions.contains_key("build"));
+        assert!(proj.seqs.contains_key("release"));
+        assert!(proj.pars.contains_key("ci"));
+        assert_eq!(proj.seqs["release"], vec!["build"]);
+        assert_eq!(proj.pars["ci"], vec!["build"]);
     }
 
     #[test]
@@ -440,17 +470,20 @@ pr x { url = $myurl; dir = `d`; }\
     }
 
     #[test]
-    fn test_duplicate_fn_seq_par_names() {
+    fn test_duplicate_fn_in_project() {
         let dir = tempfile::TempDir::new().unwrap();
-
         write_config(
             dir.path(),
             "main.sro",
             "\
 shell = `bash`;\n\
 sanctuary = `/tmp`;\n\
-fn dup { log(`a`); }\n\
-fn dup { log(`b`); }\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn dup { log(`a`); }\n\
+    fn dup { log(`b`); }\n\
+}\
 ",
         );
         let err = load(&dir.path().join("main.sro")).unwrap_err();
@@ -459,30 +492,46 @@ fn dup { log(`b`); }\
             "got: {}",
             err
         );
+    }
 
+    #[test]
+    fn test_duplicate_seq_in_project() {
+        let dir = tempfile::TempDir::new().unwrap();
         write_config(
             dir.path(),
             "main.sro",
             "\
 shell = `bash`;\n\
 sanctuary = `/tmp`;\n\
-pr test { url = `http://example.com`; dir = `test`; }\n\
-seq dup { check(test); }\n\
-seq dup { build(test); }\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn check { log(`x`); }\n\
+    seq dup { check; }\n\
+    seq dup { check; }\n\
+}\
 ",
         );
         let err = load(&dir.path().join("main.sro")).unwrap_err();
         assert!(err.to_string().contains("duplicate seq"), "got: {}", err);
+    }
 
+    #[test]
+    fn test_duplicate_par_in_project() {
+        let dir = tempfile::TempDir::new().unwrap();
         write_config(
             dir.path(),
             "main.sro",
             "\
 shell = `bash`;\n\
 sanctuary = `/tmp`;\n\
-pr test { url = `http://example.com`; dir = `test`; }\n\
-par dup { check(test); }\n\
-par dup { build(test); }\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn check { log(`x`); }\n\
+    par dup { check; }\n\
+    par dup { check; }\n\
+}\
 ",
         );
         let err = load(&dir.path().join("main.sro")).unwrap_err();
@@ -516,8 +565,11 @@ var string b = $a;\
             "\
 shell = `bash`;\n\
 sanctuary = `/tmp`;\n\
-pr test { url = `http://example.com`; dir = `test`; }\n\
-fn badfn { log($undefined); }\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn badfn { log($undefined); }\n\
+}\
 ",
         );
         let err = load(&dir.path().join("main.sro")).unwrap_err();
@@ -537,60 +589,18 @@ fn badfn { log($undefined); }\
             "\
 shell = `bash`;\n\
 sanctuary = `/tmp`;\n\
-fn real { log(`hi`); }\n\
-pr p { url = `u`; dir = `d`; }\n\
-seq s { unknown(p); }\n\
-par p2 { fake(q); }\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn real { log(`hi`); }\n\
+    seq s { unknown; }\n\
+    par p { fake; }\n\
+}\
 ",
         );
         let err = load(&dir.path().join("main.sro")).unwrap_err();
         let err_str = err.to_string();
         assert!(err_str.contains("unknown function"), "got: {}", err_str);
-    }
-
-    #[test]
-    fn test_seq_cycle_detection() {
-        let dir = tempfile::TempDir::new().unwrap();
-        write_config(
-            dir.path(),
-            "main.sro",
-            "\
-shell = `bash`;\n\
-sanctuary = `/tmp`;\n\
-pr test { url = `http://example.com`; dir = `test`; }\n\
-seq a { seq.b; }\n\
-seq b { seq.a; }\
-",
-        );
-        let err = load(&dir.path().join("main.sro")).unwrap_err();
-        let err_str = err.to_string();
-        assert!(
-            err_str.contains("cycle") || err_str.contains("Cycle"),
-            "got: {}",
-            err_str
-        );
-    }
-
-    #[test]
-    fn test_self_referencing_seq() {
-        let dir = tempfile::TempDir::new().unwrap();
-        write_config(
-            dir.path(),
-            "main.sro",
-            "\
-shell = `bash`;\n\
-sanctuary = `/tmp`;\n\
-pr test { url = `http://example.com`; dir = `test`; }\n\
-seq a { seq.a; }\
-",
-        );
-        let err = load(&dir.path().join("main.sro")).unwrap_err();
-        let err_str = err.to_string();
-        assert!(
-            err_str.contains("cycle") || err_str.contains("Cycle"),
-            "got: {}",
-            err_str
-        );
     }
 
     #[test]
@@ -602,15 +612,18 @@ seq a { seq.a; }\
             "\
 shell = `bash`;\n\
 sanctuary = `/tmp`;\n\
-pr test { url = `http://example.com`; dir = `test`; }\n\
-fn real { log(`hi`); }\n\
-seq s { real(test); }\n\
-par p { seq.s; }\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn real { log(`hi`); }\n\
+    seq s { real; }\n\
+    par p { real; }\n\
+}\
 ",
         );
         let cfg = load(&dir.path().join("main.sro")).unwrap();
-        assert!(cfg.seqs.contains_key("s"));
-        assert!(cfg.pars.contains_key("p"));
+        assert!(cfg.projects["test"].seqs.contains_key("s"));
+        assert!(cfg.projects["test"].pars.contains_key("p"));
     }
 
     #[test]
@@ -622,10 +635,13 @@ par p { seq.s; }\
             "\
 shell = `bash`;\n\
 sanctuary = `/tmp`;\n\
-pr test { url = `http://example.com`; dir = `test`; }\n\
-fn bad {\n\
-    var string x = `a`;\n\
-    var string x = `b`;\n\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn bad {\n\
+        var string x = `a`;\n\
+        var string x = `b`;\n\
+    }\n\
 }\
 ",
         );
@@ -646,10 +662,14 @@ fn bad {\n\
             &proj_dir,
             "use.sro",
             "\
-var string usevar = `from-use`;\n\
-fn usefn { log(`from-use`); }\n\
-seq useseq { usefn(test); }\n\
-par usepar { usefn(test); }\
+shell = `bash`;\n\
+sanctuary = `/tmp`;\n\
+pr __config__ {\n\
+    var string usevar = `from-use`;\n\
+    fn usefn { log(`from-use`); }\n\
+    seq useseq { usefn; }\n\
+    par usepar { usefn; }\n\
+}\
 ",
         );
         write_config(
@@ -665,10 +685,11 @@ pr test {{ url = `http://example.com`; dir = `test`; use = `use.sro`; }}\
             ),
         );
         let cfg = load(&dir.path().join("main.sro")).unwrap();
-        assert_eq!(cfg.vars.get("usevar").unwrap(), "from-use");
-        assert!(cfg.functions.contains_key("usefn"));
-        assert!(cfg.seqs.contains_key("useseq"));
-        assert!(cfg.pars.contains_key("usepar"));
+        let proj = &cfg.projects["test"];
+        assert_eq!(proj.vars.get("usevar").unwrap(), "from-use");
+        assert!(proj.functions.contains_key("usefn"));
+        assert!(proj.seqs.contains_key("useseq"));
+        assert!(proj.pars.contains_key("usepar"));
     }
 
     #[test]
@@ -747,5 +768,53 @@ sanctuary = $workdir;\
         );
         let cfg = load(&dir.path().join("main.sro")).unwrap();
         assert_eq!(cfg.sanctuary, dir.path().to_str().unwrap());
+    }
+
+    #[test]
+    fn test_project_var_chain_resolution() {
+        let dir = tempfile::TempDir::new().unwrap();
+        write_config(
+            dir.path(),
+            "main.sro",
+            "\
+shell = `bash`;\n\
+sanctuary = `/tmp`;\n\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    var string a = `hello`;\n\
+    var string b = $a;\n\
+}\
+",
+        );
+        let cfg = load(&dir.path().join("main.sro")).unwrap();
+        let proj = &cfg.projects["test"];
+        assert_eq!(proj.vars["a"], "hello");
+        assert_eq!(proj.vars["b"], "hello");
+    }
+
+    #[test]
+    fn test_project_var_isolated_from_global() {
+        let dir = tempfile::TempDir::new().unwrap();
+        write_config(
+            dir.path(),
+            "main.sro",
+            "\
+shell = `bash`;\n\
+sanctuary = `/tmp`;\n\
+var string global_var = `global`;\n\
+pr test {\n\
+    url = `u`;\n\
+    dir = `d`;\n\
+    fn f { log($global_var); }\n\
+}\
+",
+        );
+        let err = load(&dir.path().join("main.sro")).unwrap_err();
+        assert!(
+            err.to_string().contains("undefined variable"),
+            "project fns should not have access to global vars, got: {}",
+            err
+        );
     }
 }

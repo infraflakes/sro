@@ -9,13 +9,17 @@
 #   - No escape sequences — what you type is what you get.
 #   - Variable interpolation inside backticks uses ${name} syntax.
 #   - All primitives are block-scoped with no leakage.
+#   - Global vars are isolated from project-scoped vars.
+#   - No cross-project execution — each project is self-contained.
 #
 # CLI usage:
-#   sro sync                     Clone/sync all project repositories
-#   sro seq <name>               Run a sequential execution block
-#   sro par <name>               Run a parallel execution block
-#   sro -c <path> <command>      Use a custom config file (default: ~/.config/sro/config.sro)
-#   sro --config <path> <cmd>    Same as -c
+#   sro sync                      Clone/sync all project repositories
+#   sro seq <name> <project>      Run a sequential block in a project
+#   sro par <name> <project>      Run a parallel block in a project
+#   sro fn <name> <project>       Run a function directly in a project
+#   sro -c <path> <command>       Use a custom config file
+#   sro validate                  Validate the configuration file
+#   sro version                   Print version
 #
 # Config discovery:
 #   By default sro looks for ~/.config/sro/config.sro.
@@ -31,22 +35,17 @@
 
 shell = `bash`;
 
-# 2. VARIABLE DECLARATIONS
+# 2. VARIABLE DECLARATIONS (global scope)
 #
 # Syntax: var <type> <name> = <value>;
-#
-# Every variable declaration requires exactly 3 tokens before `=`:
-#   1. `var`       keyword
-#   2. `string` or `shell`   data type
-#   3. identifier  variable name
 #
 # Types:
 #   string  — stores the backtick content as-is
 #   shell   — executes the backtick content via the declared shell,
 #             stores the stdout (trailing newline stripped)
 #
-# Variables are resolved in declaration order.
-# A variable must be declared before it can be referenced.
+# Global variables are resolved in declaration order.
+# Global vars CANNOT be referenced from inside pr blocks.
 
 var shell workdir = `echo $HOME/dev`;
 var string port = `127.0.0.1:8080`;
@@ -61,22 +60,16 @@ var string port_copy = $port;
 # Must be an absolute path.
 #
 # Accepts either a backtick literal or a $variable reference.
-# If you need $HOME or other env vars, use a shell variable first.
 
 sanctuary = $workdir;
-# sanctuary = `/home/user/dev`;    # absolute path literal also works
 
 # 4. IMPORTS
 #
 # Import other .sro files to split config across multiple files.
 # Only relative paths are supported.
 # Circular imports are detected and rejected at parse time.
-# Trailing commas are allowed.
 
-import [
-    ./other_config.sro,
-    ./example/work.sro,
-];
+import ./other_config.sro;
 
 # 5. PROJECT DECLARATIONS
 #
@@ -86,27 +79,70 @@ import [
 # Projects are cloned into <sanctuary>/<dir>.
 #
 # Fields:
-#   url   (required)  Git clone URL
-#   dir   (required)  Directory name relative to sanctuary (must be unique)
-#   sync  (optional)  `clone` (default) or `ignore`
-#                     clone  — clone if not exists, skip if exists
-#                     ignore — skip entirely, do not clone
-#   use   (optional)  Path to a .sro file inside the project repo
-#                     Relative to the project's directory
-#                     Parsed after `sro sync` clones the repo
-#                     Cannot contain sanctuary or pr declarations
-#                     Used to define project-specific fn/seq/par blocks
+#   url    (required)  Git clone URL
+#   dir    (required)  Directory name relative to sanctuary (must be unique)
+#   sync   (optional)  `clone` (default) or `ignore`
+#   use    (optional)  Path to a .sro file inside the project repo
+#   branch (optional)  Branch to clone
 #
-# Running `sro sync`:
-#   - Clones repos that don't exist yet
-#   - Skips repos that already exist (checks for .git directory)
-#   - Skips repos with sync = `ignore`
-#   - Warns about git repos in sanctuary not listed in config
+# Inside a project block you can also declare:
+#   var <type> <name> = <value>;   Project-scoped variables
+#   fn <name> { ... }              Function declarations
+#   seq <name> { ... }             Sequential block (fn calls only)
+#   par <name> { ... }             Parallel block (fn calls only)
+#
+# Project vars are isolated from global vars.
+# Seq/par can only call fns — no seq-ref or par-ref syntax.
 
 pr todo {
     url = `git@github.com:yourname/todo.git`;
     dir = `todo`;
     sync = `clone`;
+
+    var shell version = `git describe --tags --always --dirty 2>/dev/null || echo dev`;
+    var string app    = `todo`;
+
+    fn build {
+        log(`Building ${app} at ${version}`);
+        cd(`cmd`);
+        env [CGO_ENABLED = `0`, GOOS = `linux`] {
+            exec(`go build -ldflags='${version}' -o bin/${app} .`);
+        };
+    }
+
+    fn test {
+        env [CGO_ENABLED = `0`] {
+            exec(`go test -race ./...`);
+            exec(`go vet ./...`);
+        };
+    }
+
+    fn lint {
+        exec(`golangci-lint run ./...`);
+    }
+
+    fn check {
+        log(`Running checks...`);
+        exec(`go fmt ./...`);
+        exec(`go vet ./...`);
+    }
+
+    seq quality {
+        lint;
+        test;
+    }
+
+    seq release {
+        lint;
+        test;
+        build;
+    }
+
+    par ci {
+        build;
+        lint;
+        test;
+    }
 }
 
 pr calendar {
@@ -114,27 +150,16 @@ pr calendar {
     dir = `calendar`;
     sync = `clone`;
     use = `.sro/main.sro`;
+    branch = `rust`;
+
+    # Use files can declare var/fn/seq/par that get merged into this project
+    # Use file path is relative to the project directory
 }
 
-# pr archived {
-#     url = `git@github.com:yourname/old-project.git`;
-#     dir = `old-project`;
-#     sync = `ignore`;
-# }
-
-# 6. FUNCTION DECLARATIONS
+# 6. FUNCTION PRIMITIVES
 #
-# Syntax: fn <name> { ... }
-#
-# Functions define a sequence of operations to run against a project.
-# They are not executed directly — they are called from seq/par blocks
-# with a project binding: fnname(pr.projectname);
-#
-# The working directory (cwd) is automatically set to:
-#   <sanctuary>/<project.dir>
-#
-# Available primitives inside fn:
-#   log(<expr>);           Print a message to stdout
+# Available inside fn { ... }:
+#   log(<expr>);           Print a message
 #   exec(<expr>);          Run a shell command via the declared shell
 #   cd(<path>);            Change cwd relative to project dir (string only)
 #   var <type> <n> = <v>;  Declare a scoped variable
@@ -142,126 +167,32 @@ pr calendar {
 #
 # Variable interpolation:
 #   Use ${name} inside backticks to interpolate variables.
-#   Both global vars and function-local vars are accessible.
+#   Both project vars and fn-local vars are accessible.
 #   All variable references are validated at load time.
 
-fn init {
-    log(`Installing dependencies for ${greeting}!`);
-    exec(`go get -u`);
-    exec(`go mod tidy`);
-}
-
-fn build {
-    log(`Building project...`);
-
-    # Shell variables capture command output at load time
-    var shell version = `git describe --tags --always --dirty --first-parent 2>/dev/null || echo dev`;
-
-    # cd changes cwd relative to project dir
-    # cd(`.`) resets to project root
-    cd(`cmd`);
-
-    # env blocks scope environment variables — no leakage
-    # Variables declared inside env blocks are also scoped
-    env [
-        GOFLAGS = `-mod=mod`,
-        CGO_ENABLED = `0`,
-        DB_URL = `postgres://localhost:5432`
-    ] {
-        # Nested env blocks override outer values
-        env [CGO_ENABLED = `1`] {
-            exec(`go build -ldflags='-s -w -X main.version=${version}' -o bin/app .`);
-        };
-
-        # CGO_ENABLED is back to `0` here
-        exec(`go mod download`);
-        exec(`go generate ./...`);
-    };
-
-    # GOFLAGS, CGO_ENABLED, DB_URL are gone here
-    cd(`.`);
-    exec(`go test ./...`);
-}
-
-fn check {
-    log(`Running linters...`);
-    exec(`go fmt ./...`);
-    exec(`go vet ./...`);
-    exec(`golangci-lint run`);
-}
-
-fn test {
-    log(`Running tests on port ${port}...`);
-    exec(`go test ./... -v`);
-}
-
-# 7. SEQUENTIAL BLOCKS
+# 7. USE FILES
 #
-# Syntax: seq <name> { ... }
-# CLI:    sro seq <name>
-#
-# Runs function calls and seq references in order, top to bottom.
-# Stops immediately when any step fails (fail-fast).
-#
-# Can contain:
-#   fnname(pr.project);    Call a function with a project binding
-#   seq.othername;         Reference another seq block
-#
-# Cannot contain:
-#   par.name;              Par blocks cannot be referenced (CLI only)
-
-seq quality {
-    check(pr.todo);
-    test(pr.todo);
-}
-
-seq deploy {
-    init(pr.todo);
-    build(pr.todo);
-    seq.quality;
-    init(pr.calendar);
-    build(pr.calendar);
-}
-
-# 8. PARALLEL BLOCKS
-#
-# Syntax: par <name> { ... }
-# CLI:    sro par <name>
-#
-# Runs all function calls and seq references concurrently.
-# If one task fails, others continue — errors are collected and reported.
-#
-# Can contain:
-#   fnname(pr.project);    Call a function with a project binding
-#   seq.name;              Reference a seq block
-#
-# Cannot contain:
-#   par.name;              Par blocks cannot be referenced (CLI only)
-#
-# Each parallel task gets its own isolated execution context.
-# Stdout may interleave between tasks.
-
-par ci {
-    build(pr.todo);
-    build(pr.calendar);
-    seq.quality;
-}
+# If a project declares `use`, that file is parsed after `sro sync`.
+# Use files can contain var, fn, seq, par at their top level.
+# They CANNOT contain: shell, sanctuary, pr, url, dir, sync, use, branch.
+# Everything is merged into the project's scope.
 
 # GRAMMAR SUMMARY (EBNF)
 #
 # program     = { statement } ;
-# statement   = shellDecl | sanctuaryDecl | importDecl | varDecl
-#             | projectDecl | fnDecl | seqDecl | parDecl ;
+# statement   = shellDecl | sanctuaryDecl | importDecl | varDecl | projectDecl
+#             | fnDecl | seqDecl | parDecl ;
 #
 # shellDecl   = "shell" "=" BACKTICK ";" ;
 # sanctuaryDecl = "sanctuary" "=" ( BACKTICK | "$" IDENT ) ";" ;
 # importDecl  = "import" "[" path { "," path } [ "," ] "]" ";" ;
 # varDecl     = "var" ( "string" | "shell" ) IDENT "=" ( BACKTICK | "$" IDENT ) ";" ;
-# projectDecl = "pr" IDENT "{" { projectField } "}" ;
+# projectDecl = "pr" IDENT "{" { projectStmt } "}" ;
+# projectStmt = projectField | varDecl | fnDecl | seqDecl | parDecl ;
 # projectField = IDENT "=" expr ";" ;
 # fnDecl      = "fn" IDENT "{" { fnStmt } "}" ;
-# seqDecl     = "seq" IDENT "{" { seqStmt } "}" ;
-# parDecl     = "par" IDENT "{" { parStmt } "}" ;
+# seqDecl     = "seq" IDENT "{" { IDENT ";" } "}" ;
+# parDecl     = "par" IDENT "{" { IDENT ";" } "}" ;
 #
 # fnStmt      = logStmt | execStmt | cdStmt | varDecl | envBlock ;
 # logStmt     = "log" "(" expr ")" ";" ;
@@ -270,11 +201,6 @@ par ci {
 # envBlock    = "env" "[" envPair { "," envPair } [ "," ] "]"
 #               "{" { fnStmt } "}" ";" ;
 # envPair     = IDENT "=" expr ;
-#
-# seqStmt     = fnCall | seqRef ;
-# parStmt     = fnCall | seqRef ;
-# fnCall      = IDENT "(" "pr" "." IDENT ")" ";" ;
-# seqRef      = "seq" "." IDENT ";" ;
 #
 # expr        = BACKTICK | "$" IDENT ;
 # BACKTICK    = "`" { char | "${" IDENT "}" } "`" ;

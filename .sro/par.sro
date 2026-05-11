@@ -1,0 +1,7 @@
+pr sro {
+  par all_sro {
+    build;
+    check;
+    test;
+  }
+}

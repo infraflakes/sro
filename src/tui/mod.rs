@@ -8,8 +8,15 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::broadcast;
+use tokio::sync::broadcast::Sender as BroadcastSender;
 
 mod render;
+
+pub fn send_event(tx: &BroadcastSender<TuiEvent>, event: TuiEvent) {
+    if let Err(e) = tx.send(event) {
+        eprintln!("[sro] warning: failed to send TUI event: {}", e);
+    }
+}
 
 pub const SPINNER_FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 pub const HEADER_HEIGHT: usize = 3;

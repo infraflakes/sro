@@ -1,9 +1,9 @@
 use crate::config::{Config, ConfigError, Project};
 use crate::dsl::ast::{Expr, FnStmt};
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{BufRead, Write};
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub type OutputCallback = Box<dyn Fn(String) + Send>;
 
@@ -29,7 +29,7 @@ impl<'a> ExecContext<'a> {
             project,
             writer,
             output_callback,
-            vars: cfg.vars.clone(),
+            vars: project.vars.clone(),
             env_stack: Vec::new(),
             work_dir: PathBuf::from(&cfg.sanctuary).join(&project.dir),
         }
@@ -82,9 +82,6 @@ impl<'a> ExecContext<'a> {
                 .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
         }
 
-        use std::io::BufRead;
-        use std::process::Stdio;
-
         let mut child = Command::new(&self.cfg.shell)
             .arg("-c")
             .arg(&cmd_str)
@@ -97,7 +94,6 @@ impl<'a> ExecContext<'a> {
 
         let stdout_indent = "  ".repeat(self.env_stack.len() + 1);
 
-        // Stream stdout line-by-line
         if let Some(stdout) = child.stdout.take() {
             let reader = std::io::BufReader::new(stdout);
             for line in reader.lines() {
@@ -113,7 +109,6 @@ impl<'a> ExecContext<'a> {
             }
         }
 
-        // Stream stderr line-by-line
         if let Some(stderr) = child.stderr.take() {
             let reader = std::io::BufReader::new(stderr);
             for line in reader.lines() {

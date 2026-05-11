@@ -1,0 +1,10 @@
+pr sro {
+  seq build {
+    init;
+    build;
+  }
+  seq test {
+    check;
+    test;
+  }
+}

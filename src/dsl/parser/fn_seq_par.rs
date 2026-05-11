@@ -1,10 +1,8 @@
 use super::*;
-use crate::dsl::token::TokenType;
 
 impl Parser {
     pub(crate) fn parse_fn_decl(&mut self) -> Result<Stmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'fn'
+        self.advance();
 
         let name = match &self.current_token().ty {
             TokenType::Ident(n) => n.clone(),
@@ -29,12 +27,11 @@ impl Parser {
 
         self.expect(TokenType::RBrace)?;
 
-        Ok(Stmt::FnDecl { span, name, body })
+        Ok(Stmt::FnDecl { name, body })
     }
 
     pub(crate) fn parse_seq_decl(&mut self) -> Result<Stmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'seq'
+        self.advance();
 
         let name = match &self.current_token().ty {
             TokenType::Ident(n) => n.clone(),
@@ -52,19 +49,18 @@ impl Parser {
 
         self.expect(TokenType::LBrace)?;
 
-        let mut stmts = Vec::new();
+        let mut fns = Vec::new();
         while self.current_token().ty != TokenType::RBrace {
-            stmts.push(self.parse_block_stmt()?);
+            fns.push(self.parse_block_fn_name()?);
         }
 
         self.expect(TokenType::RBrace)?;
 
-        Ok(Stmt::SeqDecl { span, name, stmts })
+        Ok(Stmt::SeqDecl { name, fns })
     }
 
     pub(crate) fn parse_par_decl(&mut self) -> Result<Stmt, ParseError> {
-        let span = Span::new(self.current_token().line, self.current_token().col);
-        self.advance(); // skip 'par'
+        self.advance();
 
         let name = match &self.current_token().ty {
             TokenType::Ident(n) => n.clone(),
@@ -82,13 +78,13 @@ impl Parser {
 
         self.expect(TokenType::LBrace)?;
 
-        let mut stmts = Vec::new();
+        let mut fns = Vec::new();
         while self.current_token().ty != TokenType::RBrace {
-            stmts.push(self.parse_block_stmt()?);
+            fns.push(self.parse_block_fn_name()?);
         }
 
         self.expect(TokenType::RBrace)?;
 
-        Ok(Stmt::ParDecl { span, name, stmts })
+        Ok(Stmt::ParDecl { name, fns })
     }
 }

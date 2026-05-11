@@ -7,8 +7,14 @@ pub fn run(config_arg: Option<PathBuf>) -> miette::Result<()> {
     println!("Shell: {}", cfg.shell);
     println!("Sanctuary: {}", cfg.sanctuary);
     println!("Projects: {}", cfg.projects.len());
-    println!("Functions: {}", cfg.functions.len());
-    println!("Seqs: {}", cfg.seqs.len());
-    println!("Pars: {}", cfg.pars.len());
+    for (name, proj) in &cfg.projects {
+        println!(
+            "  {}: {} fns, {} seqs, {} pars",
+            name,
+            proj.functions.len(),
+            proj.seqs.len(),
+            proj.pars.len()
+        );
+    }
     Ok(())
 }

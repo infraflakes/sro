@@ -28,42 +28,51 @@ pub fn run(config_arg: Option<PathBuf>, plain: bool) -> miette::Result<()> {
             let projects = config.projects.clone();
             tokio::spawn(async move {
                 for (i, proj_name) in project_names.iter().enumerate() {
-                    tx_clone
-                        .send(TuiEvent::UpdateStatus(i, TaskStatus::Running))
-                        .ok();
+                    crate::tui::send_event(
+                        &tx_clone,
+                        TuiEvent::UpdateStatus(i, TaskStatus::Running),
+                    );
 
                     if let Some(proj) = projects.get(proj_name) {
                         let tx = tx_clone.clone();
                         let result =
                             sync::sync_project_with_callback(&sanctuary, proj, |line: &str| {
-                                tx.send(TuiEvent::AppendOutput(i, line.to_string())).ok();
+                                crate::tui::send_event(
+                                    &tx,
+                                    TuiEvent::AppendOutput(i, line.to_string()),
+                                );
                             });
                         match result {
                             Ok(_) => {
-                                tx_clone
-                                    .send(TuiEvent::UpdateStatus(i, TaskStatus::Success))
-                                    .ok();
+                                crate::tui::send_event(
+                                    &tx_clone,
+                                    TuiEvent::UpdateStatus(i, TaskStatus::Success),
+                                );
                             }
                             Err(e) => {
-                                tx_clone
-                                    .send(TuiEvent::AppendOutput(i, format!("Error: {}", e)))
-                                    .ok();
-                                tx_clone
-                                    .send(TuiEvent::UpdateStatus(i, TaskStatus::Error))
-                                    .ok();
+                                crate::tui::send_event(
+                                    &tx_clone,
+                                    TuiEvent::AppendOutput(i, format!("Error: {}", e)),
+                                );
+                                crate::tui::send_event(
+                                    &tx_clone,
+                                    TuiEvent::UpdateStatus(i, TaskStatus::Error),
+                                );
                             }
                         }
                     } else {
-                        tx_clone
-                            .send(TuiEvent::UpdateStatus(i, TaskStatus::Error))
-                            .ok();
+                        crate::tui::send_event(
+                            &tx_clone,
+                            TuiEvent::UpdateStatus(i, TaskStatus::Error),
+                        );
                     }
                 }
 
                 if let Err(e) = sync::warn_unknown_repos(&sanctuary, &projects) {
-                    tx_clone
-                        .send(TuiEvent::AppendOutput(0, format!("Warning: {}", e)))
-                        .ok();
+                    crate::tui::send_event(
+                        &tx_clone,
+                        TuiEvent::AppendOutput(0, format!("Warning: {}", e)),
+                    );
                 }
             });
 
