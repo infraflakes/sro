@@ -195,7 +195,7 @@ fn test_par_ref_not_allowed() {
     let errs = result.unwrap_err();
     assert!(
         errs.iter()
-            .any(|e| e.to_string().contains("unexpected token"))
+            .any(|e| e.to_string().contains("expected shell"))
     );
 }
 
@@ -206,7 +206,7 @@ fn test_seq_ref_not_allowed() {
     let errs = result.unwrap_err();
     assert!(
         errs.iter()
-            .any(|e| e.to_string().contains("unexpected token"))
+            .any(|e| e.to_string().contains("expected shell"))
     );
 }
 
@@ -245,7 +245,7 @@ fn test_unexpected_token_at_top_level() {
     let errs = result.unwrap_err();
     assert!(
         errs.iter()
-            .any(|e| e.to_string().contains("unexpected token"))
+            .any(|e| e.to_string().contains("expected shell"))
     );
 }
 
@@ -292,7 +292,7 @@ fn test_error_recovery_skips_bad_stmt() {
         Err(errs) => {
             assert!(
                 errs.iter()
-                    .any(|e| e.to_string().contains("unexpected token"))
+                    .any(|e| e.to_string().contains("expected shell"))
             );
         }
     }

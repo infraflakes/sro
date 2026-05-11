@@ -11,8 +11,8 @@ impl Parser {
                         self.current_token().len,
                     ),
                     format!(
-                        "unexpected token in block body: {:?}",
-                        self.current_token().ty
+                        "expected function name, found {}",
+                        format_token(self.current_token())
                     ),
                 ));
             }

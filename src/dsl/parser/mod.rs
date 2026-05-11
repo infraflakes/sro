@@ -139,8 +139,8 @@ impl Parser {
                     self.current_token().len,
                 ),
                 format!(
-                    "unexpected token at top level: {:?}",
-                    self.current_token().ty
+                    "expected shell, sanctuary, import, var, or pr, found {}",
+                    format_token(self.current_token())
                 ),
             )),
         }
@@ -158,8 +158,8 @@ impl Parser {
                     self.current_token().len,
                 ),
                 format!(
-                    "unexpected token in project body: {:?}",
-                    self.current_token().ty
+                    "expected var, fn, seq, or par, found {}",
+                    format_token(self.current_token())
                 ),
             )),
         }
@@ -195,7 +195,10 @@ impl Parser {
                     self.current_token().offset.into(),
                     self.current_token().len,
                 ),
-                format!("unexpected token in fn body: {:?}", self.current_token().ty),
+                format!(
+                    "expected log, exec, cd, var, or env, found {}",
+                    format_token(self.current_token())
+                ),
             )),
         }
     }
