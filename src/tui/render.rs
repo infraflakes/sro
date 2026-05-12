@@ -119,7 +119,7 @@ pub fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
                         Rect::new(
                             2,
                             (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16,
-                            size.width - 4,
+                            size.width.saturating_sub(4),
                             1,
                         ),
                     );
@@ -155,7 +155,7 @@ pub fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
                         Rect::new(
                             2,
                             (y - model.scroll_row) as u16 + HEADER_HEIGHT as u16,
-                            size.width - 4,
+                            size.width.saturating_sub(4),
                             panel_height as u16,
                         ),
                     );
@@ -211,10 +211,21 @@ pub fn render(f: &mut Frame, model: &Model, spinner_idx: usize) {
     }
 
     let footer = Paragraph::new(Line::from(footer_spans));
-    f.render_widget(footer, Rect::new(1, size.height - 1, size.width - 2, 1));
+    f.render_widget(
+        footer,
+        Rect::new(
+            1,
+            size.height.saturating_sub(1),
+            size.width.saturating_sub(2),
+            1,
+        ),
+    );
 
     // Footer separator
     let footer_sep =
         Paragraph::new("─".repeat(size.width as usize)).style(Style::default().fg(Color::DarkGray));
-    f.render_widget(footer_sep, Rect::new(0, size.height - 2, size.width, 1));
+    f.render_widget(
+        footer_sep,
+        Rect::new(0, size.height.saturating_sub(2), size.width, 1),
+    );
 }

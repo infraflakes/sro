@@ -51,10 +51,13 @@ pub fn run(
             let app = TuiApp::new(model);
             let tx = app.get_sender();
 
+            use std::sync::atomic::{AtomicBool, Ordering};
             let config_arc = Arc::clone(&config);
             let tx_clone = tx.clone();
             let project_clone = project.clone();
-            tokio::spawn(async move {
+            let had_error = Arc::new(AtomicBool::new(false));
+            let had_error_bg = Arc::clone(&had_error);
+            let coordinator = tokio::spawn(async move {
                 let mut join_handles = Vec::new();
 
                 for (task_idx, fn_name) in fns.iter().enumerate() {
@@ -62,12 +65,13 @@ pub fn run(
                     let config_clone = Arc::clone(&config_arc);
                     let fn_name = fn_name.clone();
                     let project_name = project_clone.clone();
+                    let had_error_task = Arc::clone(&had_error_bg);
 
                     let handle = tokio::spawn(async move {
                         let tx_clone_for_callback = tx_clone.clone();
                         let task_idx_for_callback = task_idx;
 
-                        let callback: OutputCallback = Box::new(move |line| {
+                        let callback: OutputCallback = Arc::new(move |line| {
                             tui::send_event(
                                 &tx_clone_for_callback,
                                 TuiEvent::AppendOutput(task_idx_for_callback, line),
@@ -84,6 +88,7 @@ pub fn run(
                                 );
                             }
                             Err(e) => {
+                                had_error_task.store(true, Ordering::Relaxed);
                                 tui::send_event(
                                     &tx_clone,
                                     TuiEvent::AppendOutput(task_idx, format!("Error: {}", e)),
@@ -100,13 +105,20 @@ pub fn run(
                 }
 
                 for handle in join_handles {
-                    handle.await.ok();
+                    if handle.await.is_err() {
+                        had_error_bg.store(true, Ordering::Relaxed);
+                    }
                 }
             });
 
-            if let Err(e) = app.run().await {
-                eprintln!("TUI error: {}", e);
-                std::process::exit(1);
+            app.run()
+                .await
+                .map_err(|e| miette::miette!("TUI error: {}", e))?;
+            coordinator
+                .await
+                .map_err(|e| miette::miette!("worker task panicked: {}", e))?;
+            if had_error.load(Ordering::Relaxed) {
+                return Err(miette::miette!("one or more parallel tasks failed"));
             }
 
             Ok(())

@@ -173,19 +173,19 @@ pr calendar {
 # 7. USE FILES
 #
 # If a project declares `use`, that file is parsed after `sro sync`.
-# Use files can contain var, fn, seq, par at their top level.
-# They CANNOT contain: shell, sanctuary, pr, url, dir, sync, use, branch.
-# Everything is merged into the project's scope.
+# Use files use the same grammar as any .sro file.
+# A `pr { ... }` block in the use file has its body (var, fn, seq, par)
+# merged into the project's scope — allowing shared declarations across
+# multiple projects.
 
 # GRAMMAR SUMMARY (EBNF)
 #
 # program     = { statement } ;
-# statement   = shellDecl | sanctuaryDecl | importDecl | varDecl | projectDecl
-#             | fnDecl | seqDecl | parDecl ;
+# statement   = shellDecl | sanctuaryDecl | importDecl | varDecl | projectDecl ;
 #
 # shellDecl   = "shell" "=" BACKTICK ";" ;
 # sanctuaryDecl = "sanctuary" "=" ( BACKTICK | "$" IDENT ) ";" ;
-# importDecl  = "import" "[" path { "," path } [ "," ] "]" ";" ;
+# importDecl  = "import" path ";" ;
 # varDecl     = "var" ( "string" | "shell" ) IDENT "=" ( BACKTICK | "$" IDENT ) ";" ;
 # projectDecl = "pr" IDENT "{" { projectStmt } "}" ;
 # projectStmt = projectField | varDecl | fnDecl | seqDecl | parDecl ;

@@ -49,7 +49,7 @@ pub fn run(
             let config_arc = Arc::clone(&config);
             let tx_clone = tx.clone();
             let project_clone = project.clone();
-            tokio::spawn(async move {
+            let handle = tokio::spawn(async move {
                 for (task_idx, fn_name) in fns.iter().enumerate() {
                     tui::send_event(
                         &tx_clone,
@@ -59,7 +59,7 @@ pub fn run(
                     let tx_clone_for_callback = tx_clone.clone();
                     let task_idx_for_callback = task_idx;
 
-                    let callback: OutputCallback = Box::new(move |line| {
+                    let callback: OutputCallback = Arc::new(move |line| {
                         tui::send_event(
                             &tx_clone_for_callback,
                             TuiEvent::AppendOutput(task_idx_for_callback, line),
@@ -84,16 +84,20 @@ pub fn run(
                                 &tx_clone,
                                 TuiEvent::UpdateStatus(task_idx, TaskStatus::Error),
                             );
-                            return;
+                            return Err(miette::miette!("{}", e));
                         }
                     }
                 }
+                Ok(())
             });
 
             if let Err(e) = app.run().await {
-                eprintln!("TUI error: {}", e);
-                std::process::exit(1);
+                return Err(miette::miette!("TUI error: {}", e));
             }
+
+            handle
+                .await
+                .map_err(|e| miette::miette!("worker task failed: {}", e))??;
             Ok(())
         });
         result?;

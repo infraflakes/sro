@@ -51,6 +51,12 @@ impl Parser {
 
         let mut fns = Vec::new();
         while self.current_token().ty != TokenType::RBrace {
+            if self.current_token().ty == TokenType::EOF {
+                return Err(ParseError::new(
+                    miette::SourceSpan::new(self.current_token().offset.into(), 0),
+                    "unexpected end of file in seq declaration (expected '}')".to_string(),
+                ));
+            }
             fns.push(self.parse_block_fn_name()?);
         }
 
@@ -80,6 +86,12 @@ impl Parser {
 
         let mut fns = Vec::new();
         while self.current_token().ty != TokenType::RBrace {
+            if self.current_token().ty == TokenType::EOF {
+                return Err(ParseError::new(
+                    miette::SourceSpan::new(self.current_token().offset.into(), 0),
+                    "unexpected end of file in par declaration (expected '}')".to_string(),
+                ));
+            }
             fns.push(self.parse_block_fn_name()?);
         }
 

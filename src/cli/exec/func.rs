@@ -2,6 +2,7 @@ use super::super::load_config;
 use crate::runner::Runner;
 use crate::tui::{self, Model, TaskStatus, TuiApp, TuiEvent};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 pub fn run(
     config_arg: Option<PathBuf>,
@@ -46,7 +47,7 @@ pub fn run(
             tokio::spawn(async move {
                 tui::send_event(&tx_clone, TuiEvent::UpdateStatus(0, TaskStatus::Running));
 
-                let callback: crate::runner::OutputCallback = Box::new(move |line| {
+                let callback: crate::runner::OutputCallback = Arc::new(move |line| {
                     tui::send_event(&tx_clone, TuiEvent::AppendOutput(0, line));
                 });
 

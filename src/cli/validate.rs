@@ -130,11 +130,20 @@ fn draw_project(out: &mut String, name: &str, proj: &crate::config::types::Proje
         project_field(out, indent, "use", u);
     }
 
+    let mut proj_vars: Vec<&String> = proj.vars.keys().collect();
+    proj_vars.sort_unstable();
+    let mut proj_fns: Vec<&String> = proj.functions.keys().collect();
+    proj_fns.sort_unstable();
+    let mut proj_seqs: Vec<&String> = proj.seqs.keys().collect();
+    proj_seqs.sort_unstable();
+    let mut proj_pars: Vec<&String> = proj.pars.keys().collect();
+    proj_pars.sort_unstable();
+
     let items: &[(&str, &Vec<&String>)] = &[
-        ("var", &proj.vars.keys().collect::<Vec<&String>>()),
-        ("fn", &proj.functions.keys().collect()),
-        ("seq", &proj.seqs.keys().collect()),
-        ("par", &proj.pars.keys().collect()),
+        ("var", &proj_vars),
+        ("fn", &proj_fns),
+        ("seq", &proj_seqs),
+        ("par", &proj_pars),
     ];
 
     for (i, (label, names)) in items.iter().enumerate() {
@@ -220,8 +229,13 @@ fn display_output(output: &str) -> miette::Result<()> {
 
 fn pipe_to_pager(output: &str) -> miette::Result<()> {
     let pager = std::env::var("PAGER").unwrap_or_else(|_| "less".to_string());
+    let pager_parts = shlex::split(&pager)
+        .filter(|v| !v.is_empty())
+        .ok_or_else(|| miette::miette!("failed to parse PAGER: '{}'", pager))?;
+    let (program, args) = pager_parts.split_first().unwrap();
 
-    let mut cmd = Command::new(&pager)
+    let mut cmd = Command::new(program)
+        .args(args)
         .arg("-R")
         .stdin(Stdio::piped())
         .spawn()

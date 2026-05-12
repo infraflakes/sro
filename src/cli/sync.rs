@@ -34,25 +34,40 @@ pub fn run(config_arg: Option<PathBuf>, plain: bool) -> miette::Result<()> {
                     );
 
                     if let Some(proj) = projects.get(proj_name) {
+                        let proj = proj.clone();
+                        let sanctuary = sanctuary.clone();
                         let tx = tx_clone.clone();
-                        let result =
-                            sync::sync_project_with_callback(&sanctuary, proj, |line: &str| {
+                        let result = tokio::task::spawn_blocking(move || {
+                            sync::sync_project_with_callback(&sanctuary, &proj, |line: &str| {
                                 crate::tui::send_event(
                                     &tx,
                                     TuiEvent::AppendOutput(i, line.to_string()),
                                 );
-                            });
+                            })
+                        })
+                        .await;
+
                         match result {
-                            Ok(_) => {
+                            Ok(Ok(())) => {
                                 crate::tui::send_event(
                                     &tx_clone,
                                     TuiEvent::UpdateStatus(i, TaskStatus::Success),
                                 );
                             }
-                            Err(e) => {
+                            Ok(Err(e)) => {
                                 crate::tui::send_event(
                                     &tx_clone,
                                     TuiEvent::AppendOutput(i, format!("Error: {}", e)),
+                                );
+                                crate::tui::send_event(
+                                    &tx_clone,
+                                    TuiEvent::UpdateStatus(i, TaskStatus::Error),
+                                );
+                            }
+                            Err(e) => {
+                                crate::tui::send_event(
+                                    &tx_clone,
+                                    TuiEvent::AppendOutput(i, format!("Task failed: {}", e)),
                                 );
                                 crate::tui::send_event(
                                     &tx_clone,
@@ -68,11 +83,40 @@ pub fn run(config_arg: Option<PathBuf>, plain: bool) -> miette::Result<()> {
                     }
                 }
 
-                if let Err(e) = sync::warn_unknown_repos(&sanctuary, &projects) {
-                    crate::tui::send_event(
-                        &tx_clone,
-                        TuiEvent::AppendOutput(0, format!("Warning: {}", e)),
-                    );
+                let projects_for_warn = projects.clone();
+                let sanctuary = sanctuary.clone();
+                let tx_clone = tx_clone.clone();
+                let warn_result = tokio::task::spawn_blocking(move || {
+                    sync::warn_unknown_repos(&sanctuary, &projects_for_warn)
+                })
+                .await;
+
+                let has_tasks = !project_names.is_empty();
+                match warn_result {
+                    Ok(Err(e)) => {
+                        if has_tasks {
+                            crate::tui::send_event(
+                                &tx_clone,
+                                TuiEvent::AppendOutput(0, format!("Warning: {}", e)),
+                            );
+                        } else {
+                            eprintln!("[sro] Warning: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        if has_tasks {
+                            crate::tui::send_event(
+                                &tx_clone,
+                                TuiEvent::AppendOutput(
+                                    0,
+                                    format!("Warning: blocking task failed: {}", e),
+                                ),
+                            );
+                        } else {
+                            eprintln!("[sro] Warning: blocking task failed: {}", e);
+                        }
+                    }
+                    _ => {}
                 }
             });
 

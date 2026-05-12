@@ -4,8 +4,10 @@ use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::thread;
 
-pub type OutputCallback = Box<dyn Fn(String) + Send>;
+pub type OutputCallback = Arc<dyn Fn(String) + Send + Sync>;
 
 pub struct ExecContext<'a> {
     pub(super) cfg: &'a Config,
@@ -61,7 +63,7 @@ impl<'a> ExecContext<'a> {
         let msg = self.resolve_expr(value)?;
         let indent = "  ".repeat(self.env_stack.len());
         let line = format!("{}log  {}", indent, msg);
-        if let Some(ref callback) = self.output_callback {
+        if let Some(callback) = self.output_callback {
             callback(line);
         } else {
             writeln!(self.writer, "\x1b[38;2;255;203;107m{}\x1b[0m", line)
@@ -75,7 +77,7 @@ impl<'a> ExecContext<'a> {
         let indent = "  ".repeat(self.env_stack.len());
         let line = format!("{}exec {}", indent, cmd_str);
 
-        if let Some(ref callback) = self.output_callback {
+        if let Some(callback) = self.output_callback {
             callback(line);
         } else {
             writeln!(self.writer, "\x1b[38;2;91;156;246m{}\x1b[0m", line)
@@ -94,13 +96,40 @@ impl<'a> ExecContext<'a> {
 
         let stdout_indent = "  ".repeat(self.env_stack.len() + 1);
 
-        if let Some(stdout) = child.stdout.take() {
-            let reader = std::io::BufReader::new(stdout);
-            for line in reader.lines() {
-                let line =
-                    line.map_err(|e| ConfigError::Validation(format!("read error: {}", e)))?;
-                let line = format!("{}{}", stdout_indent, line);
-                if let Some(ref callback) = self.output_callback {
+        let stdout_thread = child.stdout.take().map(|stdout| {
+            let indent = stdout_indent.clone();
+            thread::spawn(move || -> Result<Vec<String>, ConfigError> {
+                let reader = std::io::BufReader::new(stdout);
+                let mut lines = Vec::new();
+                for line in reader.lines() {
+                    let line =
+                        line.map_err(|e| ConfigError::Validation(format!("read error: {}", e)))?;
+                    lines.push(format!("{}{}", indent, line));
+                }
+                Ok(lines)
+            })
+        });
+
+        let stderr_thread = child.stderr.take().map(|stderr| {
+            let indent = stdout_indent.clone();
+            thread::spawn(move || -> Result<Vec<String>, ConfigError> {
+                let reader = std::io::BufReader::new(stderr);
+                let mut lines = Vec::new();
+                for line in reader.lines() {
+                    let line =
+                        line.map_err(|e| ConfigError::Validation(format!("read error: {}", e)))?;
+                    lines.push(format!("{}{}", indent, line));
+                }
+                Ok(lines)
+            })
+        });
+
+        if let Some(handle) = stdout_thread {
+            let lines = handle
+                .join()
+                .map_err(|_| ConfigError::Validation("stdout reader panicked".to_string()))??;
+            for line in lines {
+                if let Some(callback) = self.output_callback {
                     callback(line);
                 } else {
                     writeln!(self.writer, "{}", line)
@@ -109,13 +138,12 @@ impl<'a> ExecContext<'a> {
             }
         }
 
-        if let Some(stderr) = child.stderr.take() {
-            let reader = std::io::BufReader::new(stderr);
-            for line in reader.lines() {
-                let line =
-                    line.map_err(|e| ConfigError::Validation(format!("read error: {}", e)))?;
-                let line = format!("{}{}", stdout_indent, line);
-                if let Some(ref callback) = self.output_callback {
+        if let Some(handle) = stderr_thread {
+            let lines = handle
+                .join()
+                .map_err(|_| ConfigError::Validation("stderr reader panicked".to_string()))??;
+            for line in lines {
+                if let Some(callback) = self.output_callback {
                     callback(line);
                 } else {
                     writeln!(self.writer, "{}", line)
@@ -155,7 +183,7 @@ impl<'a> ExecContext<'a> {
 
         let indent = "  ".repeat(self.env_stack.len());
         let line = format!("{}cd   {}", indent, arg);
-        if let Some(ref callback) = self.output_callback {
+        if let Some(callback) = self.output_callback {
             callback(line);
         } else {
             writeln!(self.writer, "\x1b[38;2;255;203;107m{}\x1b[0m", line)
@@ -218,7 +246,7 @@ impl<'a> ExecContext<'a> {
         let indent = "  ".repeat(self.env_stack.len());
         let line = format!("{}env  {}", indent, keys.join(", "));
 
-        if let Some(ref callback) = self.output_callback {
+        if let Some(callback) = self.output_callback {
             callback(line);
         } else {
             writeln!(self.writer, "\x1b[38;2;199;146;234m{}\x1b[0m", line)

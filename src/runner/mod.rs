@@ -112,17 +112,27 @@ impl Runner {
             .ok_or_else(|| ConfigError::Validation(format!("unknown par: {}", par_name)))?;
 
         if !self.suppress_headers {
-            writeln!(self.writer, "par {} ({})", par_name, project_name)
-                .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+            let line = format!("par {} ({})", par_name, project_name);
+            if let Some(ref callback) = self.output_callback {
+                callback(line);
+            } else {
+                writeln!(self.writer, "{}", line)
+                    .map_err(|e| ConfigError::Validation(format!("write error: {}", e)))?;
+            }
         }
 
         let mut handles = Vec::new();
+        let callback = self.output_callback.clone();
         for fn_name in fns {
             let cfg = Arc::clone(&self.cfg);
             let fn_name = fn_name.clone();
             let project_name = project_name.to_string();
+            let callback = callback.clone();
             handles.push(std::thread::spawn(move || {
                 let mut runner = Runner::from_arc(cfg);
+                if let Some(ref cb) = callback {
+                    runner = runner.with_output_callback(cb.clone());
+                }
                 runner.execute_fn_call(&fn_name, &project_name)
             }));
         }

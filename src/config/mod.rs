@@ -21,8 +21,9 @@ pub fn load(entry_path: &Path) -> Result<Config, ConfigError> {
             .join(entry_path)
     };
 
-    let mut visited = HashSet::new();
-    let programs = parse_recursive(&abs_path, &mut visited)?;
+    let mut loaded_files = HashSet::new();
+    let mut recursion_stack = HashSet::new();
+    let programs = parse_recursive(&abs_path, &mut loaded_files, &mut recursion_stack)?;
 
     let mut config = merge::merge(programs)?;
     validation::validate_base(&config)?;
@@ -34,7 +35,8 @@ pub fn load(entry_path: &Path) -> Result<Config, ConfigError> {
 
 fn parse_recursive(
     file_path: &Path,
-    visited: &mut HashSet<PathBuf>,
+    loaded_files: &mut HashSet<PathBuf>,
+    recursion_stack: &mut HashSet<PathBuf>,
 ) -> Result<Vec<Program>, ConfigError> {
     let abs_path = if file_path.is_absolute() {
         file_path.to_path_buf()
@@ -44,23 +46,40 @@ fn parse_recursive(
             .join(file_path)
     };
 
-    if !visited.insert(abs_path.clone()) {
-        return Err(ConfigError::CircularImport(abs_path.display().to_string()));
-    }
-
-    let data = std::fs::read_to_string(&abs_path).map_err(|e| {
+    let canon_path = std::fs::canonicalize(&abs_path).map_err(|e| {
         ConfigError::Io(std::io::Error::new(
             e.kind(),
-            format!("Failed to read {}: {}", abs_path.display(), e),
+            format!("Failed to resolve {}: {}", abs_path.display(), e),
         ))
     })?;
 
-    let source_name = abs_path.display().to_string();
+    if recursion_stack.contains(&canon_path) {
+        return Err(ConfigError::CircularImport(
+            canon_path.display().to_string(),
+        ));
+    }
+
+    if loaded_files.contains(&canon_path) {
+        return Ok(Vec::new());
+    }
+
+    recursion_stack.insert(canon_path.clone());
+
+    let data = std::fs::read_to_string(&canon_path).map_err(|e| {
+        recursion_stack.remove(&canon_path);
+        ConfigError::Io(std::io::Error::new(
+            e.kind(),
+            format!("Failed to read {}: {}", canon_path.display(), e),
+        ))
+    })?;
+
+    let source_name = canon_path.display().to_string();
     let lexer = Lexer::new(data);
     let mut parser = Parser::new(lexer);
     let program = match parser.parse() {
         Ok(prog) => prog,
         Err(errors) => {
+            recursion_stack.remove(&canon_path);
             let source = parser.into_source();
             let reports: Vec<miette::Report> = errors
                 .into_iter()
@@ -77,18 +96,25 @@ fn parse_recursive(
 
     let mut results = Vec::new();
 
-    let base_dir = abs_path.parent().unwrap_or_else(|| Path::new("."));
+    let base_dir = canon_path.parent().unwrap_or_else(|| Path::new("."));
 
     for stmt in &program.stmts {
         if let Stmt::ImportDecl { paths, .. } = stmt {
             for rel_path in paths {
                 let import_abs = base_dir.join(rel_path);
-                let imported = parse_recursive(&import_abs, visited)?;
-                results.extend(imported);
+                match parse_recursive(&import_abs, loaded_files, recursion_stack) {
+                    Ok(imported) => results.extend(imported),
+                    Err(e) => {
+                        recursion_stack.remove(&canon_path);
+                        return Err(e);
+                    }
+                }
             }
         }
     }
 
+    recursion_stack.remove(&canon_path);
+    loaded_files.insert(canon_path);
     results.push(program);
     Ok(results)
 }

@@ -2,7 +2,9 @@ use crate::config::error::ConfigError;
 use crate::config::types::{Config, Project};
 use crate::dsl::ast::{Expr, Program, Stmt, VarType};
 use std::collections::HashMap;
-use std::process::Command;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 pub(crate) fn merge(programs: Vec<Program>) -> Result<Config, ConfigError> {
     let mut shell = String::new();
@@ -210,21 +212,82 @@ pub(crate) fn merge_project_body_stmt(
     Ok(())
 }
 
+const SHELL_TIMEOUT: Duration = Duration::from_secs(30);
+const POLL_INTERVAL: Duration = Duration::from_millis(50);
+
+fn collect_output(child: &mut std::process::Child) -> (Vec<u8>, Vec<u8>) {
+    let mut stdout_buf = Vec::new();
+    let mut stderr_buf = Vec::new();
+    let _ = child
+        .stdout
+        .as_mut()
+        .map(|s| s.read_to_end(&mut stdout_buf));
+    let _ = child
+        .stderr
+        .as_mut()
+        .map(|s| s.read_to_end(&mut stderr_buf));
+    (stdout_buf, stderr_buf)
+}
+
 pub(crate) fn execute_shell(shell: &str, command: &str) -> Result<String, ConfigError> {
-    let output = Command::new(shell)
+    let mut child = Command::new(shell)
         .arg("-c")
         .arg(command)
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| ConfigError::Validation(format!("shell execution failed: {}", e)))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    let start = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if start.elapsed() >= SHELL_TIMEOUT {
+                    child.kill().ok();
+                    child.wait().ok();
+                    let (stdout_buf, stderr_buf) = collect_output(&mut child);
+                    let stderr = String::from_utf8_lossy(&stderr_buf);
+                    let stdout = String::from_utf8_lossy(&stdout_buf);
+                    let detail = if stderr.trim().is_empty() {
+                        stdout.trim().to_string()
+                    } else {
+                        stderr.trim().to_string()
+                    };
+                    return if detail.is_empty() {
+                        Err(ConfigError::Validation(format!(
+                            "shell command timed out after {}s",
+                            SHELL_TIMEOUT.as_secs()
+                        )))
+                    } else {
+                        Err(ConfigError::Validation(format!(
+                            "shell command timed out after {}s: {}",
+                            SHELL_TIMEOUT.as_secs(),
+                            detail
+                        )))
+                    };
+                }
+                std::thread::sleep(POLL_INTERVAL);
+            }
+            Err(e) => {
+                return Err(ConfigError::Validation(format!(
+                    "shell execution failed: {}",
+                    e
+                )));
+            }
+        }
+    };
+
+    let (stdout_buf, stderr_buf) = collect_output(&mut child);
+
+    if !status.success() {
+        let stderr = String::from_utf8_lossy(&stderr_buf);
         return Err(ConfigError::Validation(format!(
             "shell command failed: {}",
-            stderr
+            stderr.trim()
         )));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&stdout_buf);
     Ok(stdout.trim_end().to_string())
 }

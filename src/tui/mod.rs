@@ -119,6 +119,41 @@ impl Model {
     }
 }
 
+struct TerminalGuard {
+    terminal: Option<Terminal<CrosstermBackend<io::Stdout>>>,
+}
+
+impl TerminalGuard {
+    fn new() -> Result<Self, io::Error> {
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
+        terminal.clear()?;
+        Ok(Self {
+            terminal: Some(terminal),
+        })
+    }
+
+    fn terminal(&mut self) -> &mut Terminal<CrosstermBackend<io::Stdout>> {
+        self.terminal.as_mut().unwrap()
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        if let Some(ref mut terminal) = self.terminal {
+            let _ = disable_raw_mode();
+            let _ = execute!(
+                terminal.backend_mut(),
+                LeaveAlternateScreen,
+                DisableMouseCapture
+            );
+        }
+    }
+}
+
 pub struct TuiApp {
     model: Arc<Mutex<Model>>,
     tx: broadcast::Sender<TuiEvent>,
@@ -147,12 +182,8 @@ impl TuiApp {
     }
 
     pub async fn run(&self) -> Result<(), io::Error> {
-        enable_raw_mode()?;
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
-        terminal.clear()?;
+        let mut guard = TerminalGuard::new()?;
+        let terminal = guard.terminal();
 
         let mut rx = self.rx.lock().unwrap().take().expect("run() called twice");
         let mut spinner_idx = 0;
@@ -233,13 +264,6 @@ impl TuiApp {
                 render::render(f, &model, spinner_idx);
             })?;
         }
-
-        disable_raw_mode()?;
-        execute!(
-            terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        )?;
         Ok(())
     }
 }

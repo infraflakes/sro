@@ -58,6 +58,7 @@ pub(crate) fn resolve_use(
     parse_recursive_fn: impl Fn(
         &Path,
         &mut HashSet<PathBuf>,
+        &mut HashSet<PathBuf>,
     ) -> Result<Vec<crate::dsl::ast::Program>, ConfigError>,
 ) -> Result<(), ConfigError> {
     for proj in cfg.projects.values_mut() {
@@ -79,8 +80,9 @@ pub(crate) fn resolve_use(
             )));
         }
 
-        let mut visited = HashSet::new();
-        let programs = parse_recursive_fn(&use_path, &mut visited)?;
+        let mut loaded_files = HashSet::new();
+        let mut recursion_stack = HashSet::new();
+        let programs = parse_recursive_fn(&use_path, &mut loaded_files, &mut recursion_stack)?;
 
         // Extract pr body declarations from use file into project scope
         for program in &programs {
