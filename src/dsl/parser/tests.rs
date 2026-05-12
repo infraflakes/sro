@@ -1,0 +1,325 @@
+use super::*;
+use crate::dsl::lexer::Lexer;
+fn parse_program(input: &str) -> Result<Program, Vec<ParseError>> {
+    let lexer = Lexer::new(input.to_string());
+    let mut parser = Parser::new(lexer);
+    parser.parse()
+}
+
+fn count_stmt_types(program: &Program) -> Vec<&'static str> {
+    program
+        .stmts
+        .iter()
+        .map(|s| match s {
+            Stmt::ShellDecl { .. } => "shell",
+            Stmt::SanctuaryDecl { .. } => "sanctuary",
+            Stmt::ImportDecl { .. } => "import",
+            Stmt::VarDecl { .. } => "var",
+            Stmt::ProjectDecl { .. } => "pr",
+            Stmt::FnDecl { .. } => "fn",
+            Stmt::SeqDecl { .. } => "seq",
+            Stmt::ParDecl { .. } => "par",
+        })
+        .collect()
+}
+
+#[test]
+fn test_shell_decl() {
+    let prog = parse_program("shell = `bash`;").unwrap();
+    assert_eq!(count_stmt_types(&prog), vec!["shell"]);
+    match &prog.stmts[0] {
+        Stmt::ShellDecl { value, .. } => assert_eq!(value, "bash"),
+        _ => panic!("expected ShellDecl"),
+    }
+}
+
+#[test]
+fn test_sanctuary_decl() {
+    let prog = parse_program("sanctuary = `/tmp/dev`;").unwrap();
+    assert_eq!(count_stmt_types(&prog), vec!["sanctuary"]);
+    match &prog.stmts[0] {
+        Stmt::SanctuaryDecl { value, .. } => match value {
+            Expr::BacktickLit { parts, .. } => {
+                let concat: String = parts.iter().map(|p| p.value.as_str()).collect();
+                assert_eq!(concat, "/tmp/dev");
+            }
+            _ => panic!("expected BacktickLit"),
+        },
+        _ => panic!("expected SanctuaryDecl"),
+    }
+}
+
+#[test]
+fn test_sanctuary_with_var_ref() {
+    let prog = parse_program("sanctuary = $workdir;").unwrap();
+    match &prog.stmts[0] {
+        Stmt::SanctuaryDecl { value, .. } => match value {
+            Expr::VarRef { name, .. } => assert_eq!(name, "workdir"),
+            _ => panic!("expected VarRef"),
+        },
+        _ => panic!("expected SanctuaryDecl"),
+    }
+}
+
+#[test]
+fn test_import_decl() {
+    let prog = parse_program("import ./other.sro;").unwrap();
+    assert_eq!(count_stmt_types(&prog), vec!["import"]);
+    match &prog.stmts[0] {
+        Stmt::ImportDecl { paths, .. } => {
+            assert_eq!(paths, &vec!["./other.sro".to_string()]);
+        }
+        _ => panic!("expected ImportDecl"),
+    }
+}
+
+#[test]
+fn test_var_string_decl() {
+    let prog = parse_program("var string x = `hello`;").unwrap();
+    match &prog.stmts[0] {
+        Stmt::VarDecl {
+            var_type,
+            name,
+            value,
+            ..
+        } => {
+            assert_eq!(*var_type, VarType::String);
+            assert_eq!(name, "x");
+            match value {
+                Expr::BacktickLit { parts, .. } => {
+                    let concat: String = parts.iter().map(|p| p.value.as_str()).collect();
+                    assert_eq!(concat, "hello");
+                }
+                _ => panic!("expected BacktickLit"),
+            }
+        }
+        _ => panic!("expected VarDecl"),
+    }
+}
+
+#[test]
+fn test_var_shell_decl() {
+    let prog = parse_program("shell = `bash`;\nvar shell x = `echo hello`;").unwrap();
+    match &prog.stmts[1] {
+        Stmt::VarDecl { var_type, name, .. } => {
+            assert_eq!(*var_type, VarType::Shell);
+            assert_eq!(name, "x");
+        }
+        _ => panic!("expected VarDecl"),
+    }
+}
+
+#[test]
+fn test_var_missing_type_annotation() {
+    let result = parse_program("var x = `hello`;");
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(
+        errs.iter()
+            .any(|e| e.to_string().contains("expected 'string' or 'shell'"))
+    );
+}
+
+#[test]
+fn test_var_invalid_type() {
+    let result = parse_program("var number x = `5`;");
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(
+        errs.iter()
+            .any(|e| e.to_string().contains("expected 'string' or 'shell'"))
+    );
+}
+
+#[test]
+fn test_project_decl_with_fields() {
+    let input = "\npr todo {\n    url = `git@github.com:user/repo.git`;\n    dir = `todo`;\n    sync = `clone`;\n    use = `./main.sro`;\n    branch = `main`;\n}";
+    let prog = parse_program(input).unwrap();
+    assert_eq!(count_stmt_types(&prog), vec!["pr"]);
+    match &prog.stmts[0] {
+        Stmt::ProjectDecl {
+            name, fields, body, ..
+        } => {
+            assert_eq!(name, "todo");
+            assert_eq!(fields.len(), 5);
+            assert!(body.is_empty());
+            let keys: Vec<&str> = fields.iter().map(|f| f.key.as_str()).collect();
+            assert_eq!(keys, vec!["url", "dir", "sync", "use", "branch"]);
+        }
+        _ => panic!("expected ProjectDecl"),
+    }
+}
+
+#[test]
+fn test_project_decl_with_body_stmts() {
+    let input = "\npr todo {\n    url = `git@github.com:user/repo.git`;\n    dir = `todo`;\n    var string app = `todo`;\n    fn build {\n        log(`building`);\n    }\n    seq release {\n        build;\n    }\n    par ci {\n        build;\n    }\n}";
+    let prog = parse_program(input).unwrap();
+    match &prog.stmts[0] {
+        Stmt::ProjectDecl {
+            name, fields, body, ..
+        } => {
+            assert_eq!(name, "todo");
+            assert_eq!(fields.len(), 2);
+            assert_eq!(body.len(), 4);
+            assert!(matches!(body[0], Stmt::VarDecl { .. }));
+            assert!(matches!(body[1], Stmt::FnDecl { .. }));
+            assert!(matches!(body[2], Stmt::SeqDecl { .. }));
+            assert!(matches!(body[3], Stmt::ParDecl { .. }));
+        }
+        _ => panic!("expected ProjectDecl"),
+    }
+}
+
+#[test]
+fn test_project_duplicate_fields() {
+    let input = "\npr x {\n    url = `a`;\n    url = `b`;\n    dir = `d`;\n}";
+    let prog = parse_program(input).unwrap();
+    match &prog.stmts[0] {
+        Stmt::ProjectDecl { fields, .. } => {
+            assert_eq!(fields.len(), 3);
+        }
+        _ => panic!("expected ProjectDecl"),
+    }
+}
+
+#[test]
+fn test_seq_par_only_allows_ident() {
+    let result = parse_program("seq s { 123; }");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_par_ref_not_allowed() {
+    let result = parse_program("par p { par.x; }");
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(
+        errs.iter()
+            .any(|e| e.to_string().contains("expected shell"))
+    );
+}
+
+#[test]
+fn test_seq_ref_not_allowed() {
+    let result = parse_program("seq s { seq.x; }");
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(
+        errs.iter()
+            .any(|e| e.to_string().contains("expected shell"))
+    );
+}
+
+// --- Error recovery tests ---
+
+#[test]
+fn test_missing_semicolon() {
+    let result = parse_program("sanctuary = `$HOME`");
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(errs.iter().any(|e| e.to_string().contains("expected")));
+}
+
+#[test]
+fn test_missing_opening_brace_after_fn() {
+    let result = parse_program("fn bad");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_missing_opening_brace_after_seq() {
+    let result = parse_program("seq bad");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_missing_opening_brace_after_par() {
+    let result = parse_program("par bad");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_unexpected_token_at_top_level() {
+    let result = parse_program("fooobar = `bar`;");
+    assert!(result.is_err());
+    let errs = result.unwrap_err();
+    assert!(
+        errs.iter()
+            .any(|e| e.to_string().contains("expected shell"))
+    );
+}
+
+#[test]
+fn test_unclosed_fn_brace() {
+    let result = parse_program("fn bad { log(`hi`);");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_unclosed_seq_brace() {
+    let result = parse_program("seq s { check;");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_var_with_var_ref_value() {
+    let input = "var string x = `a`; var string y = `${x}`;";
+    let prog = parse_program(input).unwrap();
+    assert_eq!(count_stmt_types(&prog), vec!["var", "var"]);
+}
+
+#[test]
+fn test_multiple_top_level_statements() {
+    let input = "shell = `bash`;\n\
+                 sanctuary = `/tmp`;\n\
+                 import ./other.sro;\n\
+                 var string x = `hello`;\n\
+                 pr p { url = `u`; dir = `d`; fn f { log(`hi`); } seq s { f; } }";
+    let prog = parse_program(input).unwrap();
+    assert_eq!(
+        count_stmt_types(&prog),
+        vec!["shell", "sanctuary", "import", "var", "pr"]
+    );
+}
+
+#[test]
+fn test_error_recovery_skips_bad_stmt() {
+    let result = parse_program("shell = `bash`;\nfn bad { unknown }\nsanctuary = `/tmp`;");
+    match result {
+        Ok(prog) => {
+            assert_eq!(prog.stmts.len(), 3);
+        }
+        Err(errs) => {
+            assert!(
+                errs.iter()
+                    .any(|e| e.to_string().contains("expected shell"))
+            );
+        }
+    }
+}
+
+#[test]
+fn test_import_path_types() {
+    let inputs = vec![
+        "import ./foo.sro;",
+        "import ../foo.sro;",
+        "import ../../dir/foo.sro;",
+    ];
+    for input in inputs {
+        let result = parse_program(input);
+        assert!(result.is_ok(), "expected success for: {}", input);
+    }
+}
+
+#[test]
+fn test_project_with_interleaved_fields_and_body() {
+    let input = "\npr todo {\n    url = `u`;\n    var string app = `todo`;\n    dir = `d`;\n    fn build { log(`x`); }\n    sync = `clone`;\n}";
+    let prog = parse_program(input).unwrap();
+    match &prog.stmts[0] {
+        Stmt::ProjectDecl { fields, body, .. } => {
+            assert_eq!(fields.len(), 3);
+            assert_eq!(body.len(), 2);
+        }
+        _ => panic!("expected ProjectDecl"),
+    }
+}

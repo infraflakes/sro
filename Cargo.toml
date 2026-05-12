@@ -1,0 +1,25 @@
+[package]
+name = "sro"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+authors = ["Nguyen Bao Truong <infraflakes@proton.me>"]
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+dirs = "5.0"
+miette = { version = "7.6", features = ["fancy"] }
+ratatui = "0.26"
+shlex = "1.3"
+thiserror = "1.0"
+tokio = { version = "1.52", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3.27"
+
+[dependencies.crossterm]
+version = "0.28"
+default-features = false
+features = ["event-stream"]
+
+

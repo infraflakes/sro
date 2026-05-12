@@ -116,7 +116,7 @@ par ci {
 | `sanctuary = \`...\` \| $var;` | required. absolute path to workspace root |
 | `var string name = \`...\` \| $var;` | string variable, global or fn-scoped |
 | `var shell name = \`...\`;` | runs content via declared shell, stores stdout |
-| `import [./path, ...];` | import other `.sro` files, relative paths only |
+| `import ./path;` | import other `.sro` files, relative paths only |
 | `pr name { ... }` | project declaration |
 | `fn name { ... }` | execution block |
 | `seq name { ... }` | sequential orchestration block |
@@ -164,7 +164,7 @@ par ci {
 | delimiter | job |
 |-----------|-----|
 | `()` | primitive args — `exec()`, `cd()`, `log()` |
-| `[]` | typed list — `env[]`, `import[]` |
+| `[]` | typed list — `env[]` |
 | `{}` | statement block |
 | `;` | statement terminator inside `{}` |
 | `,` | item separator inside `[]` |

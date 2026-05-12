@@ -1,46 +1,22 @@
-fn init_sro {
-  exec(`go get -u`);
-  exec(`go mod tidy`);
-}
+import ./seq.sro;
+import ./par.sro;
 
-fn build_sro {
-  log(`Building sro CLI!`);
-  exec(`go mod tidy`);
-  var shell version = `git describe --tags --always --dirty --first-parent 2>/dev/null || echo "dev"`;
-  env[CGO_ENABLED = `0`] {
-      exec(`go build -ldflags='-s -w -X main.version=${version}' -o bin/sro .`);
-  };
-}
+pr sro {
 
-fn check_sro {
-  log(`Formating and linting the codebase!`);
-  exec(`go fmt ./...`);
-  exec(`go fix ./...`);
-  exec(`go vet ./...`);
-  exec(`golangci-lint run`);
-}
+  fn init {
+    exec(`nix develop -c make init`);
+  }
 
-fn test_sro {
-  log(`Examine unit tests...`);
-  exec(`go test ./... -v`);
-}
+  fn build {
+    log(`Building sro CLI!`);
+    exec(`nix develop -c make build`);
+  }
 
-seq start_sro {
-  init_sro(sro);
-  build_sro(sro);
-}
+  fn check {
+    exec(`nix develop -c make fmt`);
+  }
 
-seq build_sro {
-  build_sro(sro);
-}
-
-seq test_sro {
-  check_sro(sro);
-  test_sro(sro);
-}
-
-par all_sro {
-  build_sro(sro);
-  check_sro(sro);
-  test_sro(sro);
+  fn test {
+    exec(`nix develop -c make test`);
+  }
 }

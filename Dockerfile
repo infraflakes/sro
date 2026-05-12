@@ -1,10 +1,8 @@
-FROM golang:1.26-alpine
-
-RUN apk add --no-cache fish curl git
-RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin
-
-WORKDIR /mnt
+FROM rust:alpine AS builder
+RUN apk add --no-cache musl-dev gcc make
+WORKDIR /src
 COPY . .
+RUN cargo build --release --target x86_64-unknown-linux-musl
 
-CMD ["/usr/bin/fish"]
-CMD ["ls", "-la", "/mnt"]
+FROM scratch AS bin
+COPY --from=builder /src/target/x86_64-unknown-linux-musl/release/sro /
